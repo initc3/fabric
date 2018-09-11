@@ -186,6 +186,15 @@ unit-test: unit-test-clean peer-docker testenv ccenv
 
 unit-tests: unit-test
 
+hbmpc-tests-with-deps: unit-test-clean peer-docker testenv ccenv hbmpc-tests
+
+hbmpc-tests:
+	cd unit-test && \
+		docker-compose run --rm --no-deps unit-tests \
+		go test -v \
+		github.com/hyperledger/fabric/core/handlers/endorsement/builtin/... \
+		-run=TestDefaultEndorsement
+
 enable_ci_only_tests: testenv
 	cd unit-test && docker-compose up --abort-on-container-exit --force-recreate && docker-compose down
 
