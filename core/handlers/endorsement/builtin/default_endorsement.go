@@ -8,9 +8,9 @@ package builtin
 
 import (
     // for HBMPC
-    "fmt"
-    "log"
-    "os/exec"
+    //"fmt"
+    //"log"
+    //"os/exec"
 
 	. "github.com/hyperledger/fabric/core/handlers/endorsement/api"
 	. "github.com/hyperledger/fabric/core/handlers/endorsement/api/identities"
@@ -59,12 +59,12 @@ func (e *DefaultEndorsement) Endorse(prpBytes []byte, sp *peer.SignedProposal) (
     // and when it signs it. Essentially the mpc will act like a "pre-ordering" service
     //
     // TODO Replace "dummy" code below with appropriate code.
-    cmd := exec.Command("python3", "-m", "honeybadgermpc.polynomial")
-    out, errmsg := cmd.CombinedOutput()
-    if errmsg != nil {
-        log.Fatalf("cmd.Run() failed with %s\n", errmsg)
-    }
-    fmt.Printf("combined out:\n%s\n", string(out))
+    //cmd := exec.Command("python3", "-m", "honeybadgermpc.polynomial")
+    //out, errmsg := cmd.CombinedOutput()
+    //if errmsg != nil {
+    //    log.Fatalf("cmd.Run() failed with %s\n", errmsg)
+    //}
+    //fmt.Printf("combined out:\n%s\n", string(out))
     // ---- HoneyBadgerMPC ----
 
 	// sign the concatenation of the proposal response and the serialized endorser identity with this endorser's key

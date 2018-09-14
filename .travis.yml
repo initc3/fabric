@@ -5,7 +5,7 @@
 
 language: go
 go:
-  - 1.7
+  - 1.10
 go_import_path:  github.com/hyperledger/fabric
 sudo: required
 
@@ -15,5 +15,6 @@ services:
 env:
   - TEST_TARGET=unit-tests
   - TEST_TARGET=hbmpc-tests-with-deps
+  - TEST_TARGET=integration-test
 
 script: make $TEST_TARGET
