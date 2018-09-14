@@ -13,8 +13,11 @@ services:
   - docker
 
 env:
-  - TEST_TARGET=unit-tests
-  - TEST_TARGET=hbmpc-tests-with-deps
-  - TEST_TARGET=integration-test
+  global:
+    - TEST_PKGS=github.com/hyperledger/fabric/core/chaincode/
+  matrix:
+    - TEST_TARGET=unit-tests
+    - TEST_TARGET=hbmpc-tests-with-deps
+    #- TEST_TARGET=integration-test
 
 script: make $TEST_TARGET
