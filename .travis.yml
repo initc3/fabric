@@ -14,10 +14,12 @@ services:
 
 env:
   global:
-    - TEST_PKGS=github.com/hyperledger/fabric/core/chaincode/
+    # NOTE: In order to run specific unit tests, set TEST_PKGS, e.g.:
+    # TEST_PKGS=github.com/hyperledger/fabric/core/chaincode/
+    - TEST_PKGS=''
   matrix:
     - TEST_TARGET=unit-tests
     - TEST_TARGET=hbmpc-tests-with-deps
-    #- TEST_TARGET=integration-test
+    - TEST_TARGET=integration-test
 
 script: make $TEST_TARGET
