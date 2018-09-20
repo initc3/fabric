@@ -204,6 +204,15 @@ ginkgo -v -keepGoing --slowSpecThreshold 60 -r integration/e2e/
 
 _work in progress_
 
+The clearest idea right now is to add an HBMPC system chaincode in the peer. A different
+approach could be to use some kind of plugin, although this is not clear on how to do
+so. Yet another idea would be to have HBMPC running as a "third-party" component in a
+docker container.
+
+One possible advantage of the plugin or the docker container is that it would limit the
+need to build the peer image each time we make modifications to the HBMPC-related code.
+
+### Add new system chaincode in peer
 1. Implement a new system chaincode under [core/scc](./core/scc), say `hbmpcscc`.
 2. Register that new system chaincode in [peer/node/start.go](./peer/node/start.go),
    under the function `registerChaincodeSupport`:
@@ -244,6 +253,14 @@ _work in progress_
           return chaincodeSupport, ccp, sccp
    }
    ```
+
+### Plugin approach (?)
+_to document_
+
+
+### HBMPC as an independent containerized service (?)
+_to document_
+
 
 
 ## End-to-end Demo
