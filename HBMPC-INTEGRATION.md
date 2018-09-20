@@ -2,8 +2,8 @@
 1. [Getting Started](#getting-started)
 2. [Running the Unit Tests](#running-the-unit-tests)
 3. [Running the Integration Tests](#running-the-integration-tests)
-4. [Pointers to Relavant Parts of the Code](#pointers-to-relavant-parts-of-the-code)
-5. [Future Work: fabric-samples](#future-work-fabric-samples)
+4. [Implementation](#implementation)
+5. [End-to-end Demo](#end-to-end-demo)
 6. [Continuous Integration: Travis](#continuous-integration-travis)
 
 The goal of this document is provide instructions on how to get setup to perform
@@ -200,24 +200,63 @@ ginkgo -v -keepGoing --slowSpecThreshold 60 -r integration/e2e/
 ```
 
 
-## Pointers to Relavant Parts of the Code
+## Implementation
 
 _work in progress_
 
-**Endorsement logic** is under [core/handlers/endorsement](core/handlers/endorsement).
+1. Implement a new system chaincode under [core/scc](./core/scc), say `hbmpcscc`.
+2. Register that new system chaincode in [peer/node/start.go](./peer/node/start.go),
+   under the function `registerChaincodeSupport`:
 
-As a starting point one may simply "hack" the default endorsement which is under
-[core/handlers/endorsement/builtin/default_endorsement.go](core/handlers/endorsement/builtin/default_endorsement.go).
+   ```go
+   import (
+           // ...
+           "github.com/hyperledger/fabric/core/scc/cscc"
+           "github.com/hyperledger/fabric/core/scc/lscc"
+           "github.com/hyperledger/fabric/core/scc/qscc"
 
-More precisely, one would modify the `Endorse` function. Future work would follow one
-of the approaches documented in
-https://hyperledger-fabric.readthedocs.io/en/latest/pluggable_endorsement_and_validation.html
+           // HoneyBadgerMPC system chaincode import
+           "github.com/hyperledger/fabric/core/scc/hbmpcscc"
+           // ...
+   )
+   // ...
+   func registerChaincodeSupport(...) (...) {
+          // ...
+
+          lsccInst := lscc.New(sccp, aclProvider, pr)
+
+          // ...
+
+          csccInst := cscc.New(ccp, sccp, aclProvider)
+          qsccInst := qscc.New(aclProvider)
+
+          // HoneyBadgerMPC system chaincode instantiation
+          hbmpcsccInst := hbmpcscc.New(...)
+
+          //Now that chaincode is initialized, register all system chaincodes.
+          sccs := scc.CreatePluginSysCCs(sccp)
+
+          // HoneyBadgerMPC system chaincode registration along with others ...
+          for _, cc := range append([]scc.SelfDescribingSysCC{lsccInst, csccInst, qsccInst, hbmpcsccInst, lifecycleSCC}, sccs...) {
+                  sccp.RegisterSysCC(cc)
+          }
+          pb.RegisterChaincodeSupportServer(grpcServer.Server(), ccSrv)
+          return chaincodeSupport, ccp, sccp
+   }
+   ```
 
 
-## Future Work: fabric-samples
+## End-to-end Demo
 
 _work in progress_
 
+### end-to-end (e2e) examples
+Look under [examples](./examples). There is some documentation under
+[examples/e2e_cli/end-to-end.rst](examples/e2e_cli/end-to-end.rst).
+
+In order to test and demo the integration we can copy and modify one of the examples.
+
+### `fabric-samples`
 The idea is to have a custom `Dockerfile` such that we can run the fabric code that has
 the HoneyBadgerMPC integration.
 
