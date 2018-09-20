@@ -262,6 +262,9 @@ _to document_
 _to document_
 
 
+### Peer-to-peer Communication
+New port mappings can be added in the `core.yaml` configuration.
+
 
 ## End-to-end Demo
 
