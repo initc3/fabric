@@ -36,6 +36,13 @@ const (
 	Cscc_GetConfigTree            = "cscc/GetConfigTree"
 	Cscc_SimulateConfigTreeUpdate = "cscc/SimulateConfigTreeUpdate"
 
+	//Hscc resources
+	Hscc_GetChainInfo       = "hbmpcscc/GetChainInfo"
+	Hscc_GetBlockByNumber   = "hbmpcscc/GetBlockByNumber"
+	Hscc_GetBlockByHash     = "hbmpcscc/GetBlockByHash"
+	Hscc_GetTransactionByID = "hbmpcscc/GetTransactionByID"
+	Hscc_GetBlockByTxID     = "hbmpcscc/GetBlockByTxID"
+
 	//Peer resources
 	Peer_Propose              = "peer/Propose"
 	Peer_ChaincodeToChaincode = "peer/ChaincodeToChaincode"
