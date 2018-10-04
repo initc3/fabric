@@ -71,7 +71,12 @@ var hbmpcscclogger = flogging.MustGetLogger("hbmpcscc")
 
 // These are function names from Invoke first parameter
 const (
-	Communicate string = "Communicate"
+	//Communicate string = "Communicate"
+	GetChainInfo       string = "GetChainInfo"
+	GetBlockByNumber   string = "GetBlockByNumber"
+	GetBlockByHash     string = "GetBlockByHash"
+	GetTransactionByID string = "GetTransactionByID"
+	GetBlockByTxID     string = "GetBlockByTxID"
 )
 
 // Init is called once per chain when the chain is created.

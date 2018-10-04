@@ -44,10 +44,10 @@ func setupTestLedger(chainid string, path string) (*shim.MockStub, error) {
 	peer.MockInitialize()
 	peer.MockCreateChain(chainid)
 
-	lq := &LedgerQuerier{
+	lq := &MpcEngine{
 		aclProvider: mockAclProvider,
 	}
-	stub := shim.NewMockStub("LedgerQuerier", lq)
+	stub := shim.NewMockStub("MpcEngine", lq)
 	if res := stub.MockInit("1", nil); res.Status != shim.OK {
 		return nil, fmt.Errorf("Init failed for test ledger [%s] with message: %s", chainid, string(res.Message))
 	}
@@ -188,10 +188,10 @@ func TestFailingAccessControl(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-	e := &LedgerQuerier{
+	e := &MpcEngine{
 		aclProvider: mockAclProvider,
 	}
-	stub := shim.NewMockStub("LedgerQuerier", e)
+	stub := shim.NewMockStub("MpcEngine", e)
 
 	// GetChainInfo
 	args := [][]byte{[]byte(GetChainInfo), []byte(chainid)}
