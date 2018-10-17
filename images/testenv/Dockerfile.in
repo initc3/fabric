@@ -27,7 +27,7 @@ RUN bash /tmp/install-softhsm2.sh && rm -f install-softhsm2.sh
 WORKDIR /opt/gopath/src/github.com/hyperledger/fabric
 
 # Python HoneyBadgerMPC dependencies
-RUN apt update && apt install -y python3-pip libgmp-dev
+RUN apt update && apt install -y python3-pip libgmp-dev libmpc-dev libmpfr4
 
 # TODO change branch to hyperbadgermpc
 RUN pip3 install git+https://github.com/initc3/HoneyBadgerMPC.git@dev
