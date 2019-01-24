@@ -11,13 +11,46 @@ ADD  payload/sampleconfig.tar.bz2 $FABRIC_CFG_PATH
 ##############################################################################
 # temporary
 RUN apt-get update && apt-get install -y netcat     
-EXPOSE 9000
 
 # BEGIN: Python HoneyBadgerMPC dependencies                                  #
-RUN apt-get update && apt-get install -y git python3-pip libgmp-dev libmpc-dev libmpfr-dev
+ENV PYTHONUNBUFFERED=1
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2018-10-24
+
+ENV PATH /root/.cargo/bin:$PATH
+
+
+RUN apt-get update && apt-get install -y git locales python3-pip libffi-dev libgmp-dev libmpc-dev libmpfr-dev libntl-dev libflint-dev
+
+WORKDIR /usr/src/HoneyBadgerMPC
+
+RUN pip3 install --upgrade pip
+
+COPY . /usr/src/HoneyBadgerMPC
+
+RUN pip3 install pairing
+
+RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    locale-gen
+ENV LANG en_US.UTF-8  
+ENV LANGUAGE en_US:en  
+ENV LC_ALL en_US.UTF-8 
+
+
+# This is needed otherwise the build for the power sum solver will fail.
+# This is a known issue in the version of libflint-dev in apt.
+# https://github.com/wbhart/flint2/issues/217
+# This has been fixed if we pull the latest code from the repo. However, we want
+# to avoid compiling the lib from the source since it adds 20 minutes to the build.
 # TODO change branch to hyperbadgermpc
-RUN pip3 install -U pip
+RUN sed -i '30c #include "flint/flint.h"' /usr/include/flint/flintxx/flint_classes.h
+
+ARG BUILD
+
+# RUN pip3 install --no-cache-dir -e git+https://github.com/initc3/HoneyBadgerMPC.git@dev 
 RUN pip3 install git+https://github.com/initc3/HoneyBadgerMPC.git@dev
+
+
 # END: Python HoneyBadgerMPC dependencies                                    #
 ##############################################################################
 
