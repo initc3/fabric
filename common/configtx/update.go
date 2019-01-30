@@ -11,7 +11,6 @@ import (
 
 	"github.com/hyperledger/fabric/common/policies"
 	cb "github.com/hyperledger/fabric/protos/common"
-
 	"github.com/pkg/errors"
 )
 
@@ -123,7 +122,7 @@ func (vi *ValidatorImpl) authorizeUpdate(configUpdateEnv *cb.ConfigUpdateEnvelop
 	}
 
 	if configUpdate.ChannelId != vi.channelID {
-		return nil, errors.Errorf("Update not for correct channel: %s for %s", configUpdate.ChannelId, vi.channelID)
+		return nil, errors.Errorf("ConfigUpdate for channel '%s' but envelope for channel '%s'", configUpdate.ChannelId, vi.channelID)
 	}
 
 	readSet, err := mapConfig(configUpdate.ReadSet, vi.namespace)

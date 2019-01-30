@@ -49,6 +49,7 @@ type Provider struct {
 	bookkeepingProvider bookkeeping.Provider
 	initializer         *ledger.Initializer
 	collElgNotifier     *collElgNotifier
+	stats               *stats
 }
 
 // NewProvider instantiates a new Provider.
@@ -58,40 +59,39 @@ func NewProvider() (ledger.PeerLedgerProvider, error) {
 	// Initialize the ID store (inventory of chainIds/ledgerIds)
 	idStore := openIDStore(ledgerconfig.GetLedgerProviderPath())
 	ledgerStoreProvider := ledgerstorage.NewProvider()
-	bookkeepingProvider := bookkeeping.NewProvider()
-	// Initialize the versioned database (state database)
-	vdbProvider, err := privacyenabledstate.NewCommonStorageDBProvider(bookkeepingProvider)
-	if err != nil {
-		return nil, err
-	}
 	// Initialize the history database (index for history of values by key)
 	historydbProvider := historyleveldb.NewHistoryDBProvider()
 	logger.Info("ledger provider Initialized")
 	provider := &Provider{idStore, ledgerStoreProvider,
-		vdbProvider, historydbProvider, nil, nil, bookkeepingProvider, nil, nil}
+		nil, historydbProvider, nil, nil, nil, nil, nil, nil}
 	return provider, nil
 }
 
 // Initialize implements the corresponding method from interface ledger.PeerLedgerProvider
-func (provider *Provider) Initialize(initializer *ledger.Initializer) {
-	configHistoryMgr := confighistory.NewMgr()
+func (provider *Provider) Initialize(initializer *ledger.Initializer) error {
+	var err error
+	configHistoryMgr := confighistory.NewMgr(initializer.DeployedChaincodeInfoProvider)
 	collElgNotifier := &collElgNotifier{
 		initializer.DeployedChaincodeInfoProvider,
 		initializer.MembershipInfoProvider,
 		make(map[string]collElgListener),
 	}
 	stateListeners := initializer.StateListeners
-	// TODO uncomment follwoing line when FAB-11780 is done.
-	// Because, collElgNotifier has a dependency on `ledger.MembershipInfoProvider` which is nil as of now
-	// and will lead to a nil pointer
-	// stateListeners = append(stateListeners, collElgNotifier)
+	stateListeners = append(stateListeners, collElgNotifier)
 	stateListeners = append(stateListeners, configHistoryMgr)
 
 	provider.initializer = initializer
 	provider.configHistoryMgr = configHistoryMgr
 	provider.stateListeners = stateListeners
 	provider.collElgNotifier = collElgNotifier
+	provider.bookkeepingProvider = bookkeeping.NewProvider()
+	provider.vdbProvider, err = privacyenabledstate.NewCommonStorageDBProvider(provider.bookkeepingProvider, initializer.MetricsProvider, initializer.HealthCheckRegistry)
+	if err != nil {
+		return err
+	}
+	provider.stats = newStats(initializer.MetricsProvider)
 	provider.recoverUnderConstructionLedger()
+	return nil
 }
 
 // Create implements the corresponding method from interface ledger.PeerLedgerProvider
@@ -167,8 +167,12 @@ func (provider *Provider) openInternal(ledgerID string) (ledger.PeerLedger, erro
 
 	// Create a kvLedger for this chain/ledger, which encasulates the underlying data stores
 	// (id store, blockstore, state database, history database)
-	l, err := newKVLedger(ledgerID, blockStore, vDB, historyDB, provider.configHistoryMgr,
-		provider.stateListeners, provider.bookkeepingProvider, provider.initializer.DeployedChaincodeInfoProvider)
+	l, err := newKVLedger(
+		ledgerID, blockStore, vDB, historyDB, provider.configHistoryMgr,
+		provider.stateListeners, provider.bookkeepingProvider,
+		provider.initializer.DeployedChaincodeInfoProvider,
+		provider.stats.ledgerStats(ledgerID),
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -14,12 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric/core/config/configtest"
+	"github.com/hyperledger/fabric/gossip/util"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-
-	"github.com/hyperledger/fabric/core/config/configtest"
-	"github.com/hyperledger/fabric/gossip/util"
 )
 
 const (
@@ -415,7 +414,20 @@ func TestPartition(t *testing.T) {
 			waitForBoolFunc(t, p.isCallbackInvoked, true, "Leadership callback wasn't invoked for %s", p.id)
 		}
 	}
+}
 
+func Test_peerIDString(t *testing.T) {
+	tests := []struct {
+		input    peerID
+		expected string
+	}{
+		{nil, "<nil>"},
+		{peerID{}, ""},
+		{peerID{0, 1, 2, 3}, "00010203"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.expected, tt.input.String())
+	}
 }
 
 func TestConfigFromFile(t *testing.T) {

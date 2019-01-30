@@ -29,6 +29,8 @@ import (
 	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/crypto/tlsgen"
+	"github.com/hyperledger/fabric/common/flogging"
+	"github.com/hyperledger/fabric/common/metrics/disabled"
 	mc "github.com/hyperledger/fabric/common/mocks/config"
 	mockpolicies "github.com/hyperledger/fabric/common/mocks/policies"
 	"github.com/hyperledger/fabric/common/policies"
@@ -132,13 +134,14 @@ func initPeer(chainIDs ...string) (net.Listener, *ChaincodeSupport, func(), erro
 		aclmgmt.NewACLProvider(func(string) channelconfig.Resources { return nil }),
 		container.NewVMController(
 			map[string]container.VMProvider{
-				dockercontroller.ContainerType: dockercontroller.NewProvider("", ""),
+				dockercontroller.ContainerType: dockercontroller.NewProvider("", "", &disabled.Provider{}),
 				inproccontroller.ContainerType: ipRegistry,
 			},
 		),
 		sccp,
 		pr,
 		peer.DefaultSupport,
+		&disabled.Provider{},
 	)
 	ipRegistry.ChaincodeSupport = chaincodeSupport
 	pb.RegisterChaincodeSupportServer(grpcServer, chaincodeSupport)
@@ -195,7 +198,7 @@ func finitPeer(lis net.Listener, chainIDs ...string) {
 		requestTimeout := viper.GetDuration("ledger.state.couchDBConfig.requestTimeout")
 		createGlobalChangesDB := viper.GetBool("ledger.state.couchDBConfig.createGlobalChangesDB")
 
-		couchInstance, _ := couchdb.CreateCouchInstance(connectURL, username, password, maxRetries, maxRetriesOnStartup, requestTimeout, createGlobalChangesDB)
+		couchInstance, _ := couchdb.CreateCouchInstance(connectURL, username, password, maxRetries, maxRetriesOnStartup, requestTimeout, createGlobalChangesDB, &disabled.Provider{})
 		db := couchdb.CouchDatabase{CouchInstance: couchInstance, DBName: chainID}
 		//drop the test database
 		db.DropDatabase()
@@ -320,8 +323,8 @@ func endTxSimulation(chainID string, ccid *pb.ChaincodeID, txsim ledger.TxSimula
 			defer _commitLock_.Unlock()
 
 			blockAndPvtData := &ledger.BlockAndPvtData{
-				Block:        block,
-				BlockPvtData: make(map[uint64]*ledger.TxPvtData),
+				Block:   block,
+				PvtData: make(ledger.TxPvtDataMap),
 			}
 
 			// All tests are performed with just one transaction in a block.
@@ -335,7 +338,7 @@ func endTxSimulation(chainID string, ccid *pb.ChaincodeID, txsim ledger.TxSimula
 
 			if txSimulationResults.PvtSimulationResults != nil {
 
-				blockAndPvtData.BlockPvtData[seqInBlock] = &ledger.TxPvtData{
+				blockAndPvtData.PvtData[seqInBlock] = &ledger.TxPvtData{
 					SeqInBlock: seqInBlock,
 					WriteSet:   txSimulationResults.PvtSimulationResults,
 				}
@@ -399,7 +402,7 @@ func getDeployLSCCSpec(chainID string, cds *pb.ChaincodeDeploymentSpec, ccp *com
 }
 
 // Deploy a chaincode - i.e., build and initialize.
-func deploy(chainID string, cccid *ccprovider.CCContext, spec *pb.ChaincodeSpec, blockNumber uint64, chaincodeSupport *ChaincodeSupport) (b []byte, err error) {
+func deploy(chainID string, cccid *ccprovider.CCContext, spec *pb.ChaincodeSpec, blockNumber uint64, chaincodeSupport *ChaincodeSupport) (resp *pb.Response, err error) {
 	// First build and get the deployment spec
 	cdDeploymentSpec, err := getDeploymentSpec(spec)
 	if err != nil {
@@ -409,7 +412,7 @@ func deploy(chainID string, cccid *ccprovider.CCContext, spec *pb.ChaincodeSpec,
 }
 
 func deployWithCollectionConfigs(chainID string, cccid *ccprovider.CCContext, spec *pb.ChaincodeSpec,
-	collectionConfigPkg *common.CollectionConfigPackage, blockNumber uint64, chaincodeSupport *ChaincodeSupport) (b []byte, err error) {
+	collectionConfigPkg *common.CollectionConfigPackage, blockNumber uint64, chaincodeSupport *ChaincodeSupport) (resp *pb.Response, err error) {
 	// First build and get the deployment spec
 	cdDeploymentSpec, err := getDeploymentSpec(spec)
 	if err != nil {
@@ -419,7 +422,7 @@ func deployWithCollectionConfigs(chainID string, cccid *ccprovider.CCContext, sp
 }
 
 func deploy2(chainID string, cccid *ccprovider.CCContext, chaincodeDeploymentSpec *pb.ChaincodeDeploymentSpec,
-	collectionConfigPkg *common.CollectionConfigPackage, blockNumber uint64, chaincodeSupport *ChaincodeSupport) (b []byte, err error) {
+	collectionConfigPkg *common.CollectionConfigPackage, blockNumber uint64, chaincodeSupport *ChaincodeSupport) (resp *pb.Response, err error) {
 	cis, err := getDeployLSCCSpec(chainID, chaincodeDeploymentSpec, collectionConfigPkg)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating lscc spec : %s\n", err)
@@ -465,12 +468,11 @@ func deploy2(chainID string, cccid *ccprovider.CCContext, chaincodeDeploymentSpe
 		return nil, fmt.Errorf("Error deploying chaincode (1): %s", err)
 	}
 
-	var resp *pb.Response
 	if resp, _, err = chaincodeSupport.ExecuteLegacyInit(txParams, cccid, chaincodeDeploymentSpec); err != nil {
 		return nil, fmt.Errorf("Error deploying chaincode(2): %s", err)
 	}
 
-	return resp.Payload, nil
+	return resp, nil
 }
 
 // Invoke a chaincode.
@@ -962,6 +964,70 @@ func TestChaincodeInvokeChaincodeErrorCase(t *testing.T) {
 	}
 }
 
+func TestChaincodeInit(t *testing.T) {
+	chainID := util.GetTestChainID()
+
+	_, chaincodeSupport, cleanup, err := initPeer(chainID)
+	if err != nil {
+		t.Fail()
+		t.Logf("Error creating peer: %s", err)
+	}
+
+	defer cleanup()
+
+	url := "github.com/hyperledger/fabric/core/chaincode/testdata/chaincode/init_private_data"
+	cID := &pb.ChaincodeID{Name: "init_pvtdata", Path: url, Version: "0"}
+
+	f := "init"
+	args := util.ToChaincodeArgs(f)
+
+	spec := &pb.ChaincodeSpec{Type: 1, ChaincodeId: cID, Input: &pb.ChaincodeInput{Args: args}}
+
+	cccid := &ccprovider.CCContext{
+		Name:    "tmap",
+		Version: "0",
+	}
+
+	defer chaincodeSupport.Stop(&ccprovider.ChaincodeContainerInfo{
+		Name:          cID.Name,
+		Version:       cID.Version,
+		Path:          cID.Path,
+		Type:          "GOLANG",
+		ContainerType: "DOCKER",
+	})
+
+	var nextBlockNumber uint64 = 1
+	_, err = deploy(chainID, cccid, spec, nextBlockNumber, chaincodeSupport)
+	assert.Contains(t, err.Error(), "private data APIs are not allowed in chaincode Init")
+
+	url = "github.com/hyperledger/fabric/core/chaincode/testdata/chaincode/init_public_data"
+	cID = &pb.ChaincodeID{Name: "init_public_data", Path: url, Version: "0"}
+
+	f = "init"
+	args = util.ToChaincodeArgs(f)
+
+	spec = &pb.ChaincodeSpec{Type: 1, ChaincodeId: cID, Input: &pb.ChaincodeInput{Args: args}}
+
+	cccid = &ccprovider.CCContext{
+		Name:    "tmap",
+		Version: "0",
+	}
+
+	defer chaincodeSupport.Stop(&ccprovider.ChaincodeContainerInfo{
+		Name:          cID.Name,
+		Version:       cID.Version,
+		Path:          cID.Path,
+		Type:          "GOLANG",
+		ContainerType: "DOCKER",
+	})
+
+	resp, err := deploy(chainID, cccid, spec, nextBlockNumber, chaincodeSupport)
+	assert.NoError(t, err)
+	// why response status is defined as int32 when the status codes are
+	// defined as int (i.e., constant)
+	assert.Equal(t, int32(shim.OK), resp.Status)
+}
+
 // Test the invocation of a transaction.
 func TestQueries(t *testing.T) {
 	// Allow queries test alone so that end to end test can be performed. It takes less than 5 seconds.
@@ -1398,6 +1464,7 @@ func TestMain(m *testing.M) {
 	}
 
 	setupTestConfig()
+	flogging.ActivateSpec("chaincode=debug")
 	os.Exit(m.Run())
 }
 
@@ -1427,7 +1494,7 @@ func setupTestConfig() {
 	}
 }
 
-func deployChaincode(ctx context.Context, name string, version string, chaincodeType pb.ChaincodeSpec_Type, path string, args [][]byte, creator []byte, channel string, nextBlockNumber uint64, chaincodeSupport *ChaincodeSupport) ([]byte, *ccprovider.CCContext, error) {
+func deployChaincode(ctx context.Context, name string, version string, chaincodeType pb.ChaincodeSpec_Type, path string, args [][]byte, creator []byte, channel string, nextBlockNumber uint64, chaincodeSupport *ChaincodeSupport) (*pb.Response, *ccprovider.CCContext, error) {
 	chaincodeSpec := &pb.ChaincodeSpec{
 		ChaincodeId: &pb.ChaincodeID{
 			Name:    name,

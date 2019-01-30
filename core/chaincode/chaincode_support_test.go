@@ -22,8 +22,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/crypto/tlsgen"
-	"github.com/hyperledger/fabric/common/flogging"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
+	"github.com/hyperledger/fabric/common/metrics/disabled"
 	mc "github.com/hyperledger/fabric/common/mocks/config"
 	mocklgr "github.com/hyperledger/fabric/common/mocks/ledger"
 	mockpeer "github.com/hyperledger/fabric/common/mocks/peer"
@@ -186,13 +186,14 @@ func initMockPeer(chainIDs ...string) (*ChaincodeSupport, error) {
 		mockAclProvider,
 		container.NewVMController(
 			map[string]container.VMProvider{
-				dockercontroller.ContainerType: dockercontroller.NewProvider("", ""),
+				dockercontroller.ContainerType: dockercontroller.NewProvider("", "", &disabled.Provider{}),
 				inproccontroller.ContainerType: ipRegistry,
 			},
 		),
 		sccp,
 		pr,
 		peer.DefaultSupport,
+		&disabled.Provider{},
 	)
 	ipRegistry.ChaincodeSupport = chaincodeSupport
 
@@ -338,7 +339,7 @@ func execCC(t *testing.T, txParams *ccprovider.TransactionParams, ccSide *mockpe
 func startCC(t *testing.T, channelID string, ccname string, chaincodeSupport *ChaincodeSupport) (*mockpeer.MockCCComm, *mockpeer.MockCCComm) {
 	peerSide, ccSide := setupcc(ccname)
 	defer mockPeerCCSupport.RemoveCC(ccname)
-	flogging.SetModuleLevel("chaincode", "debug")
+
 	//register peer side with ccsupport
 	go func() {
 		chaincodeSupport.HandleChaincodeStream(peerSide)
@@ -460,7 +461,20 @@ func initializeCC(t *testing.T, chainID, ccname string, ccSide *mockpeer.MockCCC
 	execCC(t, txParams, ccSide, cccid, false, true, done, cis, respSet, chaincodeSupport)
 
 	//set the right TxID in response now
-	resp.RespMsg.(*pb.ChaincodeMessage).Txid = txid
+	resp = &mockpeer.MockResponse{
+		RecvMsg: &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_TRANSACTION},
+		RespMsg: &pb.ChaincodeMessage{
+			Type:      pb.ChaincodeMessage_COMPLETED,
+			Payload:   putils.MarshalOrPanic(&pb.Response{Status: shim.OK, Payload: []byte("init succeeded")}),
+			Txid:      txid,
+			ChannelId: chainID,
+		},
+	}
+	respSet = &mockpeer.MockResponseSet{
+		DoneFunc:  errorFunc,
+		ErrorFunc: nil,
+		Responses: []*mockpeer.MockResponse{resp},
+	}
 
 	badcccid := &ccprovider.CCContext{
 		Name:    ccname,
@@ -1083,6 +1097,7 @@ func TestStartAndWaitSuccess(t *testing.T) {
 		Registry:        handlerRegistry,
 		StartupTimeout:  10 * time.Second,
 		PackageProvider: fakePackageProvider,
+		Metrics:         NewLaunchMetrics(&disabled.Provider{}),
 	}
 
 	ccci := &ccprovider.ChaincodeContainerInfo{
@@ -1116,6 +1131,7 @@ func TestStartAndWaitTimeout(t *testing.T) {
 		Registry:        NewHandlerRegistry(false),
 		StartupTimeout:  500 * time.Millisecond,
 		PackageProvider: fakePackageProvider,
+		Metrics:         NewLaunchMetrics(&disabled.Provider{}),
 	}
 
 	ccci := &ccprovider.ChaincodeContainerInfo{
@@ -1148,6 +1164,7 @@ func TestStartAndWaitLaunchError(t *testing.T) {
 		Registry:        NewHandlerRegistry(false),
 		StartupTimeout:  10 * time.Second,
 		PackageProvider: fakePackageProvider,
+		Metrics:         NewLaunchMetrics(&disabled.Provider{}),
 	}
 
 	ccci := &ccprovider.ChaincodeContainerInfo{

@@ -24,13 +24,12 @@ import (
 
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/hyperledger/fabric/protos/common"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMain(m *testing.M) {
-	flogging.SetModuleLevel("fsblkstorage", "debug")
+	flogging.ActivateSpec("fsblkstorage=debug")
 	os.Exit(m.Run())
 }
 

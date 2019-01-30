@@ -7,10 +7,13 @@ SPDX-License-Identifier: Apache-2.0
 package ledgermgmt
 
 import (
+	"bytes"
 	"sync"
 
 	"github.com/hyperledger/fabric/common/flogging"
+	"github.com/hyperledger/fabric/common/metrics"
 	"github.com/hyperledger/fabric/core/chaincode/platforms"
+	"github.com/hyperledger/fabric/core/common/ccprovider"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/cceventmgmt"
 	"github.com/hyperledger/fabric/core/ledger/customtx"
@@ -40,6 +43,8 @@ type Initializer struct {
 	PlatformRegistry              *platforms.Registry
 	DeployedChaincodeInfoProvider ledger.DeployedChaincodeInfoProvider
 	MembershipInfoProvider        ledger.MembershipInfoProvider
+	MetricsProvider               metrics.Provider
+	HealthCheckRegistry           ledger.HealthCheckRegistry
 }
 
 // Initialize initializes ledgermgmt
@@ -56,8 +61,11 @@ func initialize(initializer *Initializer) {
 	initialized = true
 	openedLedgers = make(map[string]ledger.PeerLedger)
 	customtx.Initialize(initializer.CustomTxProcessors)
-	cceventmgmt.Initialize(initializer.PlatformRegistry)
-	finalStateListeners := addListenerForCCEventsHandler([]ledger.StateListener{})
+	cceventmgmt.Initialize(&chaincodeInfoProviderImpl{
+		initializer.PlatformRegistry,
+		initializer.DeployedChaincodeInfoProvider,
+	})
+	finalStateListeners := addListenerForCCEventsHandler(initializer.DeployedChaincodeInfoProvider, []ledger.StateListener{})
 	provider, err := kvledger.NewProvider()
 	if err != nil {
 		panic(errors.WithMessage(err, "Error in instantiating ledger provider"))
@@ -66,8 +74,9 @@ func initialize(initializer *Initializer) {
 		StateListeners:                finalStateListeners,
 		DeployedChaincodeInfoProvider: initializer.DeployedChaincodeInfoProvider,
 		MembershipInfoProvider:        initializer.MembershipInfoProvider,
+		MetricsProvider:               initializer.MetricsProvider,
+		HealthCheckRegistry:           initializer.HealthCheckRegistry,
 	})
-
 	ledgerProvider = provider
 	logger.Info("ledger mgmt initialized")
 }
@@ -169,6 +178,45 @@ func (l *closableLedger) closeWithoutLock() {
 
 // lscc namespace listener for chaincode instantiate transactions (which manipulates data in 'lscc' namespace)
 // this code should be later moved to peer and passed via `Initialize` function of ledgermgmt
-func addListenerForCCEventsHandler(stateListeners []ledger.StateListener) []ledger.StateListener {
-	return append(stateListeners, &cceventmgmt.KVLedgerLSCCStateListener{})
+func addListenerForCCEventsHandler(
+	deployedCCInfoProvider ledger.DeployedChaincodeInfoProvider,
+	stateListeners []ledger.StateListener) []ledger.StateListener {
+	return append(stateListeners, &cceventmgmt.KVLedgerLSCCStateListener{DeployedChaincodeInfoProvider: deployedCCInfoProvider})
+}
+
+// chaincodeInfoProviderImpl implements interface cceventmgmt.ChaincodeInfoProvider
+type chaincodeInfoProviderImpl struct {
+	pr                     *platforms.Registry
+	deployedCCInfoProvider ledger.DeployedChaincodeInfoProvider
+}
+
+// GetDeployedChaincodeInfo implements function in the interface cceventmgmt.ChaincodeInfoProvider
+func (p *chaincodeInfoProviderImpl) GetDeployedChaincodeInfo(chainid string,
+	chaincodeDefinition *cceventmgmt.ChaincodeDefinition) (*ledger.DeployedChaincodeInfo, error) {
+	lock.Lock()
+	ledger := openedLedgers[chainid]
+	lock.Unlock()
+	if ledger == nil {
+		return nil, errors.Errorf("Ledger not opened [%s]", chainid)
+	}
+	qe, err := ledger.NewQueryExecutor()
+	if err != nil {
+		return nil, err
+	}
+	defer qe.Done()
+	deployedChaincodeInfo, err := p.deployedCCInfoProvider.ChaincodeInfo(chaincodeDefinition.Name, qe)
+	if err != nil || deployedChaincodeInfo == nil {
+		return nil, err
+	}
+	if deployedChaincodeInfo.Version != chaincodeDefinition.Version ||
+		!bytes.Equal(deployedChaincodeInfo.Hash, chaincodeDefinition.Hash) {
+		// if the deployed chaincode with the given name has different version or different hash, return nil
+		return nil, nil
+	}
+	return deployedChaincodeInfo, nil
+}
+
+// RetrieveChaincodeArtifacts implements function in the interface cceventmgmt.ChaincodeInfoProvider
+func (p *chaincodeInfoProviderImpl) RetrieveChaincodeArtifacts(chaincodeDefinition *cceventmgmt.ChaincodeDefinition) (installed bool, dbArtifactsTar []byte, err error) {
+	return ccprovider.ExtractStatedbArtifactsForChaincode(chaincodeDefinition.Name, chaincodeDefinition.Version, p.pr)
 }

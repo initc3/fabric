@@ -148,6 +148,11 @@ func NewGRPCServerFromListener(listener net.Listener, serverConfig ServerConfig)
 		)
 	}
 
+	if serverConfig.MetricsProvider != nil {
+		sh := NewServerStatsHandler(serverConfig.MetricsProvider)
+		serverOpts = append(serverOpts, grpc.StatsHandler(sh))
+	}
+
 	grpcServer.server = grpc.NewServer(serverOpts...)
 
 	return grpcServer, nil

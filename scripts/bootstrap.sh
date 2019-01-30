@@ -6,11 +6,11 @@
 #
 
 # if version not passed in, default to latest released version
-export VERSION=1.3.0
+export VERSION=1.4.0
 # if ca version not passed in, default to latest released version
 export CA_VERSION=$VERSION
 # current version of thirdparty images (couchdb, kafka and zookeeper) released
-export THIRDPARTY_IMAGE_VERSION=0.4.13
+export THIRDPARTY_IMAGE_VERSION=0.4.14
 export ARCH=$(echo "$(uname -s|tr '[:upper:]' '[:lower:]'|sed 's/mingw64_nt.*/windows/')-$(uname -m | sed 's/x86_64/amd64/g')")
 export MARCH=$(uname -m)
 
@@ -23,8 +23,8 @@ printHelp() {
   echo "-s : bypass fabric-samples repo clone"
   echo "-b : bypass download of platform-specific binaries"
   echo
-  echo "e.g. bootstrap.sh 1.3.0 -s"
-  echo "would download docker images and binaries for version 1.3.0"
+  echo "e.g. bootstrap.sh 1.4.0 -s"
+  echo "would download docker images and binaries for version 1.4.0"
 }
 
 dockerFabricPull() {
@@ -176,11 +176,11 @@ BINARIES=true
 
 # Parse commandline args pull out
 # version and/or ca-version strings first
-if [ ! -z $1 -a ${1:0:1} != "-" ]; then
+if [ ! -z "$1" -a ${1:0:1} != "-" ]; then
   VERSION=$1;shift
-  if [ ! -z $1  -a ${1:0:1} != "-" ]; then
+  if [ ! -z "$1"  -a ${1:0:1} != "-" ]; then
     CA_VERSION=$1;shift
-    if [ ! -z $1  -a ${1:0:1} != "-" ]; then
+    if [ ! -z "$1"  -a ${1:0:1} != "-" ]; then
       THIRDPARTY_IMAGE_VERSION=$1;shift
     fi
   fi

@@ -18,23 +18,16 @@ import (
 	cf "github.com/hyperledger/fabric/core/config"
 	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
-
 	"github.com/spf13/viper"
 )
 
 const (
-	pkgLogID = "common/tools/configtxgen/localconfig"
-
 	// Prefix identifies the prefix for the configtxgen-related ENV vars.
 	Prefix string = "CONFIGTX"
 )
 
-var logger = flogging.MustGetLogger(pkgLogID)
+var logger = flogging.MustGetLogger("common.tools.configtxgen.localconfig")
 var configName = strings.ToLower(Prefix)
-
-func init() {
-	flogging.SetModuleLevel(pkgLogID, "error")
-}
 
 const (
 	// TestChainID is the channel name used for testing purposes when one is

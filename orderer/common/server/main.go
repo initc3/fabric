@@ -1,28 +1,39 @@
-// Copyright IBM Corp. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
 
 package server
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // This is essentially the main package for the orderer
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/crypto"
 	"github.com/hyperledger/fabric/common/flogging"
+	floggingmetrics "github.com/hyperledger/fabric/common/flogging/metrics"
+	"github.com/hyperledger/fabric/common/grpclogging"
+	"github.com/hyperledger/fabric/common/grpcmetrics"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/localmsp"
+	"github.com/hyperledger/fabric/common/metrics"
+	"github.com/hyperledger/fabric/common/metrics/disabled"
 	"github.com/hyperledger/fabric/common/tools/configtxgen/encoder"
 	genesisconfig "github.com/hyperledger/fabric/common/tools/configtxgen/localconfig"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/core/comm"
+	"github.com/hyperledger/fabric/core/operations"
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/orderer/common/bootstrap/file"
@@ -30,7 +41,6 @@ import (
 	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/hyperledger/fabric/orderer/common/metadata"
 	"github.com/hyperledger/fabric/orderer/common/multichannel"
-	"github.com/hyperledger/fabric/orderer/common/performance"
 	"github.com/hyperledger/fabric/orderer/consensus"
 	"github.com/hyperledger/fabric/orderer/consensus/etcdraft"
 	"github.com/hyperledger/fabric/orderer/consensus/kafka"
@@ -38,12 +48,12 @@ import (
 	cb "github.com/hyperledger/fabric/protos/common"
 	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/utils"
+	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-const pkgLogID = "orderer/common/server"
-
-var logger = flogging.MustGetLogger(pkgLogID)
+var logger = flogging.MustGetLogger("orderer.common.server")
 
 //command line flags
 var (
@@ -71,7 +81,7 @@ func Main() {
 		logger.Error("failed to parse config: ", err)
 		os.Exit(1)
 	}
-	initializeLoggingLevel(conf)
+	initializeLogging()
 	initializeLocalMsp(conf)
 
 	prettyPrintStruct(conf)
@@ -80,20 +90,46 @@ func Main() {
 
 // Start provides a layer of abstraction for benchmark test
 func Start(cmd string, conf *localconfig.TopLevel) {
-	genesisBlock := extractGenesisBlock(conf)
-	clusterType := isClusterType(genesisBlock)
+	bootstrapBlock := extractBootstrapBlock(conf)
+	clusterType := isClusterType(bootstrapBlock)
 	signer := localmsp.NewSigner()
-	serverConfig := initializeServerConfig(conf)
+
+	lf, _ := createLedgerFactory(conf)
+
+	clusterDialer := &cluster.PredicateDialer{}
+	clusterConfig := initializeClusterConfig(conf)
+	clusterDialer.SetConfig(clusterConfig)
+
+	// Only clusters that are equipped with a recent config block can replicate.
+	if clusterType && conf.General.GenesisMethod == "file" {
+		r := &replicationInitiator{
+			logger:         logger,
+			secOpts:        clusterConfig.SecOpts,
+			bootstrapBlock: bootstrapBlock,
+			conf:           conf,
+			lf:             &ledgerFactory{lf},
+			signer:         signer,
+		}
+		r.replicateIfNeeded()
+	}
+
+	opsSystem := newOperationsSystem(conf.Operations, conf.Metrics)
+	err := opsSystem.Start()
+	if err != nil {
+		logger.Panicf("failed to initialize operations subsystem: %s", err)
+	}
+	defer opsSystem.Stop()
+	metricsProvider := opsSystem.Provider
+	logObserver := floggingmetrics.NewObserver(metricsProvider)
+	flogging.Global.SetObserver(logObserver)
+
+	serverConfig := initializeServerConfig(conf, metricsProvider)
 	grpcServer := initializeGrpcServer(conf, serverConfig)
 	caSupport := &comm.CASupport{
 		AppRootCAsByChain:     make(map[string][][]byte),
 		OrdererRootCAsByChain: make(map[string][][]byte),
 		ClientRootCAs:         serverConfig.SecOpts.ClientRootCAs,
 	}
-
-	clusterDialer := &cluster.PredicateDialer{}
-	clusterConfig := initializeClusterConfig(conf)
-	clusterDialer.SetConfig(clusterConfig)
 
 	tlsCallback := func(bundle *channelconfig.Bundle) {
 		// only need to do this if mutual TLS is required or if the orderer node is part of a cluster
@@ -106,31 +142,27 @@ func Start(cmd string, conf *localconfig.TopLevel) {
 		}
 	}
 
-	manager := initializeMultichannelRegistrar(clusterType, clusterDialer, serverConfig, grpcServer, conf, signer, tlsCallback)
+	manager := initializeMultichannelRegistrar(bootstrapBlock, clusterDialer, serverConfig, grpcServer, conf, signer, metricsProvider, lf, tlsCallback)
 	mutualTLS := serverConfig.SecOpts.UseTLS && serverConfig.SecOpts.RequireClientCert
-	server := NewServer(manager, signer, &conf.Debug, conf.General.Authentication.TimeWindow, mutualTLS)
+	server := NewServer(manager, metricsProvider, &conf.Debug, conf.General.Authentication.TimeWindow, mutualTLS)
 
-	switch cmd {
-	case start.FullCommand(): // "start" command
-		logger.Infof("Starting %s", metadata.GetVersionInfo())
-		initializeProfilingService(conf)
-		ab.RegisterAtomicBroadcastServer(grpcServer.Server(), server)
-		logger.Info("Beginning to serve requests")
-		grpcServer.Start()
-	case benchmark.FullCommand(): // "benchmark" command
-		logger.Info("Starting orderer in benchmark mode")
-		benchmarkServer := performance.GetBenchmarkServer()
-		benchmarkServer.RegisterService(server)
-		benchmarkServer.Start()
-	}
+	logger.Infof("Starting %s", metadata.GetVersionInfo())
+	go handleSignals(addPlatformSignals(map[os.Signal]func(){
+		syscall.SIGTERM: func() { grpcServer.Stop() },
+	}))
+	initializeProfilingService(conf)
+	ab.RegisterAtomicBroadcastServer(grpcServer.Server(), server)
+	logger.Info("Beginning to serve requests")
+	grpcServer.Start()
 }
 
-// Set the logging level
-func initializeLoggingLevel(conf *localconfig.TopLevel) {
+func initializeLogging() {
+	loggingSpec := os.Getenv("FABRIC_LOGGING_SPEC")
+	loggingFormat := os.Getenv("FABRIC_LOGGING_FORMAT")
 	flogging.Init(flogging.Config{
-		Format:  conf.General.LogFormat,
+		Format:  loggingFormat,
 		Writer:  os.Stderr,
-		LogSpec: conf.General.LogLevel,
+		LogSpec: loggingSpec,
 	})
 }
 
@@ -145,11 +177,27 @@ func initializeProfilingService(conf *localconfig.TopLevel) {
 	}
 }
 
+func handleSignals(handlers map[os.Signal]func()) {
+	var signals []os.Signal
+	for sig := range handlers {
+		signals = append(signals, sig)
+	}
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, signals...)
+
+	for sig := range signalChan {
+		logger.Infof("Received signal: %d (%s)", sig, sig)
+		handlers[sig]()
+	}
+}
+
 func initializeClusterConfig(conf *localconfig.TopLevel) comm.ClientConfig {
 	cc := comm.ClientConfig{
-		KaOpts:  comm.DefaultKeepaliveOptions,
-		Timeout: conf.General.Cluster.DialTimeout,
-		SecOpts: &comm.SecureOptions{},
+		AsyncConnect: true,
+		KaOpts:       comm.DefaultKeepaliveOptions,
+		Timeout:      conf.General.Cluster.DialTimeout,
+		SecOpts:      &comm.SecureOptions{},
 	}
 
 	if (!conf.General.TLS.Enabled) || conf.General.Cluster.ClientCertificate == "" {
@@ -190,7 +238,7 @@ func initializeClusterConfig(conf *localconfig.TopLevel) comm.ClientConfig {
 	return cc
 }
 
-func initializeServerConfig(conf *localconfig.TopLevel) comm.ServerConfig {
+func initializeServerConfig(conf *localconfig.TopLevel, metricsProvider metrics.Provider) comm.ServerConfig {
 	// secure server config
 	secureOpts := &comm.SecureOptions{
 		UseTLS:            conf.General.TLS.Enabled,
@@ -244,23 +292,53 @@ func initializeServerConfig(conf *localconfig.TopLevel) comm.ServerConfig {
 	kaOpts.ServerInterval = conf.General.Keepalive.ServerInterval
 	kaOpts.ServerTimeout = conf.General.Keepalive.ServerTimeout
 
-	return comm.ServerConfig{SecOpts: secureOpts, KaOpts: kaOpts}
+	commLogger := flogging.MustGetLogger("core.comm").With("server", "Orderer")
+	if metricsProvider == nil {
+		metricsProvider = &disabled.Provider{}
+	}
+
+	return comm.ServerConfig{
+		SecOpts:         secureOpts,
+		KaOpts:          kaOpts,
+		Logger:          commLogger,
+		MetricsProvider: metricsProvider,
+		StreamInterceptors: []grpc.StreamServerInterceptor{
+			grpcmetrics.StreamServerInterceptor(grpcmetrics.NewStreamMetrics(metricsProvider)),
+			grpclogging.StreamServerInterceptor(flogging.MustGetLogger("comm.grpc.server").Zap()),
+		},
+		UnaryInterceptors: []grpc.UnaryServerInterceptor{
+			grpcmetrics.UnaryServerInterceptor(grpcmetrics.NewUnaryMetrics(metricsProvider)),
+			grpclogging.UnaryServerInterceptor(
+				flogging.MustGetLogger("comm.grpc.server").Zap(),
+				grpclogging.WithLeveler(grpclogging.LevelerFunc(grpcLeveler)),
+			),
+		},
+	}
 }
 
-func extractGenesisBlock(conf *localconfig.TopLevel) *cb.Block {
-	var genesisBlock *cb.Block
+func grpcLeveler(ctx context.Context, fullMethod string) zapcore.Level {
+	switch fullMethod {
+	case "/orderer.Cluster/Step":
+		return flogging.DisabledLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
+func extractBootstrapBlock(conf *localconfig.TopLevel) *cb.Block {
+	var bootstrapBlock *cb.Block
 
 	// Select the bootstrapping mechanism
 	switch conf.General.GenesisMethod {
 	case "provisional":
-		genesisBlock = encoder.New(genesisconfig.Load(conf.General.GenesisProfile)).GenesisBlockForChannel(conf.General.SystemChannel)
+		bootstrapBlock = encoder.New(genesisconfig.Load(conf.General.GenesisProfile)).GenesisBlockForChannel(conf.General.SystemChannel)
 	case "file":
-		genesisBlock = file.New(conf.General.GenesisFile).GenesisBlock()
+		bootstrapBlock = file.New(conf.General.GenesisFile).GenesisBlock()
 	default:
 		logger.Panic("Unknown genesis method:", conf.General.GenesisMethod)
 	}
 
-	return genesisBlock
+	return bootstrapBlock
 }
 
 func initializeBootstrapChannel(genesisBlock *cb.Block, lf blockledger.Factory) {
@@ -278,24 +356,8 @@ func initializeBootstrapChannel(genesisBlock *cb.Block, lf blockledger.Factory) 
 	}
 }
 
-func isClusterType(genesisBlock *cb.Block) bool {
-	if genesisBlock.Data == nil || len(genesisBlock.Data.Data) == 0 {
-		logger.Fatalf("Empty genesis block")
-	}
-	env := &cb.Envelope{}
-	if err := proto.Unmarshal(genesisBlock.Data.Data[0], env); err != nil {
-		logger.Fatalf("Failed to unmarshal the genesis block's envelope: %v", err)
-	}
-	bundle, err := channelconfig.NewBundleFromEnvelope(env)
-	if err != nil {
-		logger.Fatalf("Failed creating bundle from the genesis block: %v", err)
-	}
-	ordConf, exists := bundle.OrdererConfig()
-	if !exists {
-		logger.Fatalf("Orderer config doesn't exist in bundle derived from genesis block")
-	}
-	_, exists = clusterTypes[ordConf.ConsensusType()]
-	return exists
+func isClusterType(_ *cb.Block) bool {
+	return false
 }
 
 func initializeGrpcServer(conf *localconfig.TopLevel, serverConfig comm.ServerConfig) *comm.GRPCServer {
@@ -321,15 +383,16 @@ func initializeLocalMsp(conf *localconfig.TopLevel) {
 	}
 }
 
-func initializeMultichannelRegistrar(isClusterType bool,
+func initializeMultichannelRegistrar(bootstrapBlock *cb.Block,
 	clusterDialer *cluster.PredicateDialer,
 	srvConf comm.ServerConfig,
 	srv *comm.GRPCServer,
 	conf *localconfig.TopLevel,
 	signer crypto.LocalSigner,
+	metricsProvider metrics.Provider,
+	lf blockledger.Factory,
 	callbacks ...func(bundle *channelconfig.Bundle)) *multichannel.Registrar {
-	lf, _ := createLedgerFactory(conf)
-	genesisBlock := extractGenesisBlock(conf)
+	genesisBlock := extractBootstrapBlock(conf)
 	// Are we bootstrapping?
 	if len(lf.ChainIDs()) == 0 {
 		initializeBootstrapChannel(genesisBlock, lf)
@@ -339,16 +402,44 @@ func initializeMultichannelRegistrar(isClusterType bool,
 
 	consenters := make(map[string]consensus.Consenter)
 
-	registrar := multichannel.NewRegistrar(lf, signer, callbacks...)
+	registrar := multichannel.NewRegistrar(lf, signer, metricsProvider, callbacks...)
 
 	consenters["solo"] = solo.New()
-	consenters["kafka"] = kafka.New(conf.Kafka)
-	if isClusterType {
+	var kafkaMetrics *kafka.Metrics
+	consenters["kafka"], kafkaMetrics = kafka.New(conf.Kafka, metricsProvider)
+	// Note, we pass a 'nil' channel here, we could pass a channel that
+	// closes if we wished to cleanup this routine on exit.
+	go kafkaMetrics.PollGoMetricsUntilStop(time.Minute, nil)
+	if isClusterType(bootstrapBlock) {
 		raftConsenter := etcdraft.New(clusterDialer, conf, srvConf, srv, registrar)
 		consenters["etcdraft"] = raftConsenter
 	}
 	registrar.Initialize(consenters)
 	return registrar
+}
+
+func newOperationsSystem(ops localconfig.Operations, metrics localconfig.Metrics) *operations.System {
+	return operations.NewSystem(operations.Options{
+		Logger:        flogging.MustGetLogger("orderer.operations"),
+		ListenAddress: ops.ListenAddress,
+		Metrics: operations.MetricsOptions{
+			Provider: metrics.Provider,
+			Statsd: &operations.Statsd{
+				Network:       metrics.Statsd.Network,
+				Address:       metrics.Statsd.Address,
+				WriteInterval: metrics.Statsd.WriteInterval,
+				Prefix:        metrics.Statsd.Prefix,
+			},
+		},
+		TLS: operations.TLS{
+			Enabled:            ops.TLS.Enabled,
+			CertFile:           ops.TLS.Certificate,
+			KeyFile:            ops.TLS.PrivateKey,
+			ClientCertRequired: ops.TLS.ClientAuthRequired,
+			ClientCACertFiles:  ops.TLS.ClientRootCAs,
+		},
+		Version: metadata.Version,
+	})
 }
 
 func updateTrustedRoots(srv *comm.GRPCServer, rootCASupport *comm.CASupport,

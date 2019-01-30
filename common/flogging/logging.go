@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package flogging
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -31,7 +32,7 @@ type Config struct {
 	// LogSpec determines the log levels that are enabled for the logging system. The
 	// spec must be in a format that can be processed by ActivateSpec.
 	//
-	// If LogSpec is not provided, modules will be enabled at the INFO level.
+	// If LogSpec is not provided, loggers will be enabled at the INFO level.
 	LogSpec string
 
 	// Writer is the sink for encoded and formatted log records.
@@ -44,13 +45,14 @@ type Config struct {
 // intended to bridge between the legacy logging infrastructure built around
 // go-logging and the structured, level logging provided by zap.
 type Logging struct {
-	*ModuleLevels
+	*LoggerLevels
 
 	mutex          sync.RWMutex
 	encoding       Encoding
 	encoderConfig  zapcore.EncoderConfig
 	multiFormatter *fabenc.MultiFormatter
 	writer         zapcore.WriteSyncer
+	observer       Observer
 }
 
 // New creates a new logging system and initializes it with the provided
@@ -60,7 +62,7 @@ func New(c Config) (*Logging, error) {
 	encoderConfig.NameKey = "name"
 
 	s := &Logging{
-		ModuleLevels: &ModuleLevels{
+		LoggerLevels: &LoggerLevels{
 			defaultLevel: defaultLevel,
 		},
 		encoderConfig:  encoderConfig,
@@ -82,10 +84,13 @@ func (s *Logging) Apply(c Config) error {
 	}
 
 	if c.LogSpec == "" {
-		c.LogSpec = "INFO"
+		c.LogSpec = os.Getenv("FABRIC_LOGGING_SPEC")
+	}
+	if c.LogSpec == "" {
+		c.LogSpec = defaultLevel.String()
 	}
 
-	err = s.ModuleLevels.ActivateSpec(c.LogSpec)
+	err = s.LoggerLevels.ActivateSpec(c.LogSpec)
 	if err != nil {
 		return err
 	}
@@ -152,6 +157,14 @@ func (s *Logging) SetWriter(w io.Writer) {
 	s.mutex.Unlock()
 }
 
+// SetObserver is used to provide a log observer that will be called as log
+// levels are checked or written.. Only a single observer is supported.
+func (s *Logging) SetObserver(observer Observer) {
+	s.mutex.Lock()
+	s.observer = observer
+	s.mutex.Unlock()
+}
+
 // Write satisfies the io.Write contract. It delegates to the writer argument
 // of SetWriter or the Writer field of Config. The Core uses this when encoding
 // log records.
@@ -182,31 +195,58 @@ func (s *Logging) Encoding() Encoding {
 	return e
 }
 
-// ZapLogger instantiates a new zap.Logger for the specified module. The module
-// becomes the name of the logger and is used to determine which log levels are
-// enabled.
-func (s *Logging) ZapLogger(module string) *zap.Logger {
+// ZapLogger instantiates a new zap.Logger with the specified name. The name is
+// used to determine which log levels are enabled.
+func (s *Logging) ZapLogger(name string) *zap.Logger {
+	if !isValidLoggerName(name) {
+		panic(fmt.Sprintf("invalid logger name: %s", name))
+	}
+
+	// always return true here because the core's Check()
+	// method computes the level for the logger name based
+	// on the active logging spec
+	levelEnabler := zap.LevelEnablerFunc(func(l zapcore.Level) bool { return true })
+
 	s.mutex.RLock()
-	level := s.ModuleLevels.Level(module)
-	s.ModuleLevels.SetLevel(module, level)
 	core := &Core{
-		LevelEnabler: s.ModuleLevels.LevelEnabler(module),
+		LevelEnabler: levelEnabler,
+		Levels:       s.LoggerLevels,
 		Encoders: map[Encoding]zapcore.Encoder{
 			JSON:    zapcore.NewJSONEncoder(s.encoderConfig),
 			CONSOLE: fabenc.NewFormatEncoder(s.multiFormatter),
 		},
 		Selector: s,
 		Output:   s,
+		Observer: s,
 	}
 	s.mutex.RUnlock()
 
-	return NewZapLogger(core).Named(module)
+	return NewZapLogger(core).Named(name)
 }
 
-// Logger instantiates a new FabricLogger for the specified module. The module
-// becomes the name of the logger and is used to determine which log levels are
-// enabled.
-func (s *Logging) Logger(module string) *FabricLogger {
-	zl := s.ZapLogger(module)
+func (s *Logging) Check(e zapcore.Entry, ce *zapcore.CheckedEntry) {
+	s.mutex.RLock()
+	observer := s.observer
+	s.mutex.RUnlock()
+
+	if observer != nil {
+		observer.Check(e, ce)
+	}
+}
+
+func (s *Logging) WriteEntry(e zapcore.Entry, fields []zapcore.Field) {
+	s.mutex.RLock()
+	observer := s.observer
+	s.mutex.RUnlock()
+
+	if observer != nil {
+		observer.WriteEntry(e, fields)
+	}
+}
+
+// Logger instantiates a new FabricLogger with the specified name. The name is
+// used to determine which log levels are enabled.
+func (s *Logging) Logger(name string) *FabricLogger {
+	zl := s.ZapLogger(name)
 	return NewFabricLogger(zl)
 }

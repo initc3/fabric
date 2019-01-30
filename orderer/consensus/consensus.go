@@ -74,6 +74,10 @@ type ConsenterSupport interface {
 	crypto.LocalSigner
 	msgprocessor.Processor
 
+	// VerifyBlockSignature verifies a signature of a block with a given optional
+	// configuration (can be nil).
+	VerifyBlockSignature([]*cb.SignedData, *cb.ConfigEnvelope) error
+
 	// BlockCutter returns the block cutting helper for this channel.
 	BlockCutter() blockcutter.Receiver
 
@@ -83,6 +87,10 @@ type ConsenterSupport interface {
 	// CreateNextBlock takes a list of messages and creates the next block based on the block with highest block number committed to the ledger
 	// Note that either WriteBlock or WriteConfigBlock must be called before invoking this method a second time.
 	CreateNextBlock(messages []*cb.Envelope) *cb.Block
+
+	// Block returns a block with the given number,
+	// or nil if such a block doesn't exist.
+	Block(number uint64) *cb.Block
 
 	// WriteBlock commits a block to the ledger.
 	WriteBlock(block *cb.Block, encodedMetadataValue []byte)

@@ -1,5 +1,5 @@
 /*
-Copyright IBM Corp. 2017 All Rights Reserved.
+Copyright IBM Corp. All Rights Reserved.
 
 SPDX-License-Identifier: Apache-2.0
 */
@@ -9,7 +9,6 @@ package plain_test
 import (
 	"github.com/hyperledger/fabric/protos/token"
 	"github.com/hyperledger/fabric/token/tms/plain"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )

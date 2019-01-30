@@ -1,17 +1,7 @@
 /*
-Copyright IBM Corp. 2016 All Rights Reserved.
+Copyright IBM Corp. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-                 http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+SPDX-License-Identifier: Apache-2.0
 */
 
 package solo
@@ -27,12 +17,11 @@ import (
 	mockmultichannel "github.com/hyperledger/fabric/orderer/mocks/common/multichannel"
 	cb "github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/utils"
-
 	"github.com/stretchr/testify/assert"
 )
 
 func init() {
-	flogging.SetModuleLevel(pkgLogID, "DEBUG")
+	flogging.ActivateSpec("orderer.consensus.solo=DEBUG")
 }
 
 var testMessage = &cb.Envelope{
@@ -64,7 +53,7 @@ func goWithWait(target func()) *waitableGo {
 
 // This test checks that if consenter is halted before a timer fires, nothing is actually written.
 func TestHaltBeforeTimeout(t *testing.T) {
-	batchTimeout, _ := time.ParseDuration("1ms")
+	batchTimeout, _ := time.ParseDuration("10ms")
 	support := &mockmultichannel.ConsenterSupport{
 		Blocks:          make(chan *cb.Block),
 		BlockCutterVal:  mockblockcutter.NewReceiver(),
@@ -147,14 +136,14 @@ func TestBatchTimer(t *testing.T) {
 	select {
 	case <-support.Blocks:
 	case <-time.After(time.Second):
-		t.Fatalf("Did not create the second batch, indicating that the timer was not appopriately reset")
+		t.Fatalf("Did not create the second batch, indicating that the timer was not appropriately reset")
 	}
 
 	support.SharedConfigVal.BatchTimeoutVal, _ = time.ParseDuration("10s")
 	syncQueueMessage(testMessage, bs, support.BlockCutterVal)
 	select {
 	case <-support.Blocks:
-		t.Fatalf("Created another batch, indicating that the timer was not appopriately re-read")
+		t.Fatalf("Created another batch, indicating that the timer was not appropriately re-read")
 	case <-time.After(100 * time.Millisecond):
 	}
 

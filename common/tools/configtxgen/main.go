@@ -23,13 +23,12 @@ import (
 	cb "github.com/hyperledger/fabric/protos/common"
 	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
-
 	"github.com/pkg/errors"
 )
 
 var exitCode = 0
 
-var logger = flogging.MustGetLogger("common/tools/configtxgen")
+var logger = flogging.MustGetLogger("common.tools.configtxgen")
 
 func doOutputBlock(config *genesisconfig.Profile, channelID string, outputBlock string) error {
 	pgen := encoder.New(config)
@@ -238,13 +237,13 @@ func main() {
 		if err := recover(); err != nil {
 			if strings.Contains(fmt.Sprint(err), "Error reading configuration: Unsupported Config Type") {
 				logger.Error("Could not find configtx.yaml. " +
-					"Please make sure that FABRIC_CFG_PATH or --configPath is set to a path " +
+					"Please make sure that FABRIC_CFG_PATH or -configPath is set to a path " +
 					"which contains configtx.yaml")
 				os.Exit(1)
 			}
 			if strings.Contains(fmt.Sprint(err), "Could not find profile") {
 				logger.Error(fmt.Sprint(err) + ". " +
-					"Please make sure that FABRIC_CFG_PATH or --configPath is set to a path " +
+					"Please make sure that FABRIC_CFG_PATH or -configPath is set to a path " +
 					"which contains configtx.yaml with the specified profile")
 				os.Exit(1)
 			}

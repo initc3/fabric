@@ -55,6 +55,14 @@ type HashedCompositeKey struct {
 	KeyHash        string
 }
 
+// PvtKVWrite encloses Key, IsDelete, Value, and Version components
+type PvtKVWrite struct {
+	Key      string
+	IsDelete bool
+	Value    []byte
+	Version  *version.Height
+}
+
 // UpdateBatch encapsulates the updates to Public, Private, and Hashed data.
 // This is expected to contain a consistent set of updates
 type UpdateBatch struct {
@@ -191,9 +199,12 @@ func (h HashedUpdateBatch) ToCompositeKeyMap() map[HashedCompositeKey]*statedb.V
 	return m
 }
 
+// PvtdataCompositeKeyMap is a map of PvtdataCompositeKey to VersionedValue
+type PvtdataCompositeKeyMap map[PvtdataCompositeKey]*statedb.VersionedValue
+
 // ToCompositeKeyMap rearranges the update batch data in the form of a single map
-func (p PvtUpdateBatch) ToCompositeKeyMap() map[PvtdataCompositeKey]*statedb.VersionedValue {
-	m := make(map[PvtdataCompositeKey]*statedb.VersionedValue)
+func (p PvtUpdateBatch) ToCompositeKeyMap() PvtdataCompositeKeyMap {
+	m := make(PvtdataCompositeKeyMap)
 	for ns, nsBatch := range p.UpdateMap {
 		for _, coll := range nsBatch.GetCollectionNames() {
 			for key, vv := range nsBatch.GetUpdates(coll) {

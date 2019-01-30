@@ -14,19 +14,20 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	ramledger "github.com/hyperledger/fabric/common/ledger/blockledger/ram"
+	"github.com/hyperledger/fabric/common/metrics/disabled"
 	mockchannelconfig "github.com/hyperledger/fabric/common/mocks/config"
 	mockcrypto "github.com/hyperledger/fabric/common/mocks/crypto"
+	mmsp "github.com/hyperledger/fabric/common/mocks/msp"
 	mockpolicies "github.com/hyperledger/fabric/common/mocks/policies"
 	"github.com/hyperledger/fabric/common/tools/configtxgen/configtxgentest"
 	"github.com/hyperledger/fabric/common/tools/configtxgen/encoder"
 	genesisconfig "github.com/hyperledger/fabric/common/tools/configtxgen/localconfig"
 	"github.com/hyperledger/fabric/msp"
+	"github.com/hyperledger/fabric/orderer/common/blockcutter"
 	"github.com/hyperledger/fabric/orderer/consensus"
 	cb "github.com/hyperledger/fabric/protos/common"
 	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/utils"
-
-	mmsp "github.com/hyperledger/fabric/common/mocks/msp"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
@@ -38,7 +39,7 @@ var mockSigningIdentity msp.SigningIdentity
 const NoConsortiumChain = "no-consortium-chain"
 
 func init() {
-	flogging.SetModuleLevel(pkgLogID, "DEBUG")
+	flogging.ActivateSpec("orderer.commmon.multichannel=DEBUG")
 	mockSigningIdentity, _ = mmsp.NewNoopMsp().GetDefaultSigningIdentity()
 
 	conf = configtxgentest.Load(genesisconfig.SampleInsecureSoloProfile)
@@ -110,7 +111,7 @@ func TestNoSystemChain(t *testing.T) {
 	consenters[conf.Orderer.OrdererType] = &mockConsenter{}
 
 	assert.Panics(t, func() {
-		NewRegistrar(lf, mockCrypto()).Initialize(consenters)
+		NewRegistrar(lf, mockCrypto(), &disabled.Provider{}).Initialize(consenters)
 	}, "Should have panicked when starting without a system chain")
 }
 
@@ -130,7 +131,7 @@ func TestMultiSystemChannel(t *testing.T) {
 	consenters[conf.Orderer.OrdererType] = &mockConsenter{}
 
 	assert.Panics(t, func() {
-		NewRegistrar(lf, mockCrypto()).Initialize(consenters)
+		NewRegistrar(lf, mockCrypto(), &disabled.Provider{}).Initialize(consenters)
 	}, "Two system channels should have caused panic")
 }
 
@@ -141,7 +142,7 @@ func TestManagerImpl(t *testing.T) {
 	consenters := make(map[string]consensus.Consenter)
 	consenters[conf.Orderer.OrdererType] = &mockConsenter{}
 
-	manager := NewRegistrar(lf, mockCrypto())
+	manager := NewRegistrar(lf, mockCrypto(), &disabled.Provider{})
 	manager.Initialize(consenters)
 
 	chainSupport := manager.GetChain("Fake")
@@ -179,7 +180,7 @@ func TestNewChain(t *testing.T) {
 	consenters := make(map[string]consensus.Consenter)
 	consenters[conf.Orderer.OrdererType] = &mockConsenter{}
 
-	manager := NewRegistrar(lf, mockCrypto())
+	manager := NewRegistrar(lf, mockCrypto(), &disabled.Provider{})
 	manager.Initialize(consenters)
 	orglessChannelConf := configtxgentest.Load(genesisconfig.SampleSingleMSPChannelProfile)
 	orglessChannelConf.Application.Organizations = nil
@@ -254,7 +255,7 @@ func TestNewChain(t *testing.T) {
 		}
 	}
 
-	rcs := newChainSupport(manager, chainSupport.ledgerResources, consenters, mockCrypto())
+	rcs := newChainSupport(manager, chainSupport.ledgerResources, consenters, mockCrypto(), blockcutter.NewMetrics(&disabled.Provider{}))
 	assert.Equal(t, expectedLastConfigSeq, rcs.lastConfigSeq, "On restart, incorrect lastConfigSeq")
 }
 
@@ -336,7 +337,7 @@ func TestResourcesCheck(t *testing.T) {
 func TestBroadcastChannelSupportRejection(t *testing.T) {
 	ledgerFactory, _ := NewRAMLedgerAndFactory(10)
 	mockConsenters := map[string]consensus.Consenter{conf.Orderer.OrdererType: &mockConsenter{}}
-	registrar := NewRegistrar(ledgerFactory, mockCrypto())
+	registrar := NewRegistrar(ledgerFactory, mockCrypto(), &disabled.Provider{})
 	registrar.Initialize(mockConsenters)
 	randomValue := 1
 	configTx := makeConfigTx(genesisconfig.TestChainID, randomValue)

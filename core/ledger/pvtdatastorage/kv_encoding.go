@@ -26,6 +26,7 @@ var (
 	eligibleMissingDataKeyPrefix   = []byte{4}
 	ineligibleMissingDataKeyPrefix = []byte{5}
 	collElgKeyPrefix               = []byte{6}
+	lastUpdatedOldBlocksKey        = []byte{7}
 
 	nilByte    = byte(0)
 	emptyValue = []byte{}
@@ -128,7 +129,7 @@ func decodeMissingDataKey(keyBytes []byte) *missingDataKey {
 		return key
 	}
 
-	splittedKey := bytes.Split(keyBytes[1:], []byte{nilByte})
+	splittedKey := bytes.SplitN(keyBytes[1:], []byte{nilByte}, 3) //encoded bytes for blknum may contain empty bytes
 	key.ns = string(splittedKey[0])
 	key.coll = string(splittedKey[1])
 	key.blkNum, _ = util.DecodeReverseOrderVarUint64(splittedKey[2])
@@ -195,4 +196,16 @@ func createRangeScanKeysForIneligibleMissingData(maxBlkNum uint64, ns, coll stri
 func createRangeScanKeysForCollElg() (startKey, endKey []byte) {
 	return encodeCollElgKey(math.MaxUint64),
 		encodeCollElgKey(0)
+}
+
+func datakeyRange(blockNum uint64) (startKey, endKey []byte) {
+	startKey = append(pvtDataKeyPrefix, version.NewHeight(blockNum, 0).ToBytes()...)
+	endKey = append(pvtDataKeyPrefix, version.NewHeight(blockNum, math.MaxUint64).ToBytes()...)
+	return
+}
+
+func eligibleMissingdatakeyRange(blkNum uint64) (startKey, endKey []byte) {
+	startKey = append(eligibleMissingDataKeyPrefix, util.EncodeReverseOrderVarUint64(blkNum)...)
+	endKey = append(eligibleMissingDataKeyPrefix, util.EncodeReverseOrderVarUint64(blkNum-1)...)
+	return
 }

@@ -24,6 +24,7 @@ import (
 	genesisconfig "github.com/hyperledger/fabric/common/tools/configtxgen/localconfig"
 	"github.com/hyperledger/fabric/core/config/configtest"
 	"github.com/hyperledger/fabric/core/ledger"
+	"github.com/hyperledger/fabric/core/ledger/customtx"
 	"github.com/hyperledger/fabric/core/ledger/ledgermgmt"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	ordererconfig "github.com/hyperledger/fabric/orderer/common/localconfig"
@@ -48,7 +49,12 @@ func TestConfigTxCreateLedger(t *testing.T) {
 	defer cleanup()
 
 	chainid := "testchain1"
-	ledgermgmt.InitializeTestEnvWithCustomProcessors(ConfigTxProcessors)
+	ledgermgmt.InitializeTestEnvWithInitializer(
+		&ledgermgmt.Initializer{
+			CustomTxProcessors: ConfigTxProcessors,
+		},
+	)
+
 	defer ledgermgmt.CleanupTestEnv()
 
 	chanConf := helper.sampleChannelConfig(1, true)
@@ -67,7 +73,12 @@ func TestConfigTxUpdateChanConfig(t *testing.T) {
 	cleanup := setupPeerFS(t)
 	defer cleanup()
 	chainid := "testchain1"
-	ledgermgmt.InitializeTestEnvWithCustomProcessors(ConfigTxProcessors)
+	ledgermgmt.InitializeTestEnvWithInitializer(
+		&ledgermgmt.Initializer{
+			CustomTxProcessors: ConfigTxProcessors,
+		},
+	)
+
 	defer ledgermgmt.CleanupTestEnv()
 
 	chanConf := helper.sampleChannelConfig(1, true)
@@ -104,7 +115,12 @@ func TestGenesisBlockCreateLedger(t *testing.T) {
 	b, err := configtxtest.MakeGenesisBlock("testchain")
 	assert.NoError(t, err)
 
-	ledgermgmt.InitializeTestEnvWithCustomProcessors(ConfigTxProcessors)
+	ledgermgmt.InitializeTestEnvWithInitializer(
+		&ledgermgmt.Initializer{
+			CustomTxProcessors: ConfigTxProcessors,
+		},
+	)
+
 	defer ledgermgmt.CleanupTestEnv()
 
 	lgr, err := ledgermgmt.CreateLedger(b)
@@ -113,6 +129,21 @@ func TestGenesisBlockCreateLedger(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, chanConf)
 	t.Logf("chanConf = %s", chanConf)
+}
+
+func TestCustomTxProcessors(t *testing.T) {
+	cleanup := setupPeerFS(t)
+	defer cleanup()
+
+	ledgermgmt.InitializeExistingTestEnvWithInitializer(&ledgermgmt.Initializer{
+		CustomTxProcessors: ConfigTxProcessors,
+	})
+	defer ledgermgmt.CleanupTestEnv()
+
+	processor := customtx.GetProcessor(common.HeaderType_CONFIG)
+	assert.NotNil(t, processor)
+	processor = customtx.GetProcessor(common.HeaderType_TOKEN_TRANSACTION)
+	assert.NotNil(t, processor)
 }
 
 type testHelper struct {

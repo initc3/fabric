@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	logger = flogging.MustGetLogger("discovery/acl")
+	logger = flogging.MustGetLogger("discovery.acl")
 )
 
 // ChannelConfigGetter enables to retrieve the channel config resources
@@ -117,7 +117,7 @@ type ChannelPolicyManagerGetter interface {
 // NewChannelVerifier returns a new channel verifier from the given policy and policy manager getter
 func NewChannelVerifier(policy string, polMgr policies.ChannelPolicyManagerGetter) *ChannelVerifier {
 	return &ChannelVerifier{
-		Policy: policy,
+		Policy:                     policy,
 		ChannelPolicyManagerGetter: polMgr,
 	}
 }

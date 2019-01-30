@@ -11,14 +11,13 @@ import (
 
 	"github.com/hyperledger/fabric/common/chaincode"
 	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabric/core/ledger/cceventmgmt"
 	"github.com/pkg/errors"
 )
 
 var (
 	// Logger is the logging instance for this package.
 	// It's exported because the tests override its backend
-	Logger = flogging.MustGetLogger("discovery/lifecycle")
+	Logger = flogging.MustGetLogger("discovery.lifecycle")
 )
 
 // Lifecycle manages information regarding chaincode lifecycle
@@ -192,10 +191,9 @@ func (lc *Lifecycle) fireChangeListeners(channel string) {
 // NewChannelSubscription subscribes to a channel
 func (lc *Lifecycle) NewChannelSubscription(channel string, queryCreator QueryCreator) (*Subscription, error) {
 	sub := &Subscription{
-		lc:             lc,
-		channel:        channel,
-		queryCreator:   queryCreator,
-		pendingUpdates: make(chan *cceventmgmt.ChaincodeDefinition, 1),
+		lc:           lc,
+		channel:      channel,
+		queryCreator: queryCreator,
 	}
 	// Initialize metadata for the channel.
 	// This loads metadata about all installed chaincodes

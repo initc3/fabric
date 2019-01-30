@@ -8,6 +8,7 @@ package election
 
 import (
 	"bytes"
+	"encoding/hex"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -100,6 +101,13 @@ type LeaderElectionService interface {
 
 type peerID []byte
 
+func (p peerID) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return hex.EncodeToString(p)
+}
+
 // Peer describes a remote peer
 type Peer interface {
 	// ID returns the ID of the peer
@@ -130,7 +138,7 @@ func NewLeaderElectionService(adapter LeaderElectionAdapter, id string, callback
 		adapter:       adapter,
 		stopChan:      make(chan struct{}, 1),
 		interruptChan: make(chan struct{}, 1),
-		logger:        util.GetLogger(util.LoggingElectionModule, ""),
+		logger:        util.GetLogger(util.ElectionLogger, ""),
 		callback:      noopCallback,
 	}
 

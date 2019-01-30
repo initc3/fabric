@@ -9,6 +9,7 @@ package chaincode_test
 import (
 	"time"
 
+	"github.com/hyperledger/fabric/common/metrics/metricsfakes"
 	"github.com/hyperledger/fabric/core/chaincode"
 	"github.com/hyperledger/fabric/core/chaincode/fake"
 	"github.com/hyperledger/fabric/core/chaincode/mock"
@@ -24,6 +25,9 @@ var _ = Describe("RuntimeLauncher", func() {
 		fakeRuntime         *mock.Runtime
 		fakeRegistry        *fake.LaunchRegistry
 		launchState         *chaincode.LaunchState
+		fakeLaunchDuration  *metricsfakes.Histogram
+		fakeLaunchFailures  *metricsfakes.Counter
+		fakeLaunchTimeouts  *metricsfakes.Counter
 
 		ccci *ccprovider.ChaincodeContainerInfo
 
@@ -44,6 +48,18 @@ var _ = Describe("RuntimeLauncher", func() {
 		fakePackageProvider = &mock.PackageProvider{}
 		fakePackageProvider.GetChaincodeCodePackageReturns([]byte("code-package"), nil)
 
+		fakeLaunchDuration = &metricsfakes.Histogram{}
+		fakeLaunchDuration.WithReturns(fakeLaunchDuration)
+		fakeLaunchFailures = &metricsfakes.Counter{}
+		fakeLaunchFailures.WithReturns(fakeLaunchFailures)
+		fakeLaunchTimeouts = &metricsfakes.Counter{}
+		fakeLaunchTimeouts.WithReturns(fakeLaunchTimeouts)
+
+		launchMetrics := &chaincode.LaunchMetrics{
+			LaunchDuration: fakeLaunchDuration,
+			LaunchFailures: fakeLaunchFailures,
+			LaunchTimeouts: fakeLaunchTimeouts,
+		}
 		ccci = &ccprovider.ChaincodeContainerInfo{
 			Name:          "chaincode-name",
 			Path:          "chaincode-path",
@@ -57,6 +73,7 @@ var _ = Describe("RuntimeLauncher", func() {
 			Registry:        fakeRegistry,
 			PackageProvider: fakePackageProvider,
 			StartupTimeout:  5 * time.Second,
+			Metrics:         launchMetrics,
 		}
 	})
 
@@ -97,6 +114,20 @@ var _ = Describe("RuntimeLauncher", func() {
 		Expect(fakeRegistry.DeregisterCallCount()).To(Equal(0))
 	})
 
+	It("records launch duration", func() {
+		err := runtimeLauncher.Launch(ccci)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(fakeLaunchDuration.WithCallCount()).To(Equal(1))
+		labelValues := fakeLaunchDuration.WithArgsForCall(0)
+		Expect(labelValues).To(Equal([]string{
+			"chaincode", "chaincode-name:chaincode-version",
+			"success", "true",
+		}))
+		Expect(fakeLaunchDuration.ObserveArgsForCall(0)).NotTo(BeZero())
+		Expect(fakeLaunchDuration.ObserveArgsForCall(0)).To(BeNumerically("<", 1.0))
+	})
+
 	Context("when starting the runtime fails", func() {
 		BeforeEach(func() {
 			fakeRuntime.StartReturns(errors.New("banana"))
@@ -111,6 +142,17 @@ var _ = Describe("RuntimeLauncher", func() {
 			runtimeLauncher.Launch(ccci)
 			Eventually(launchState.Done()).Should(BeClosed())
 			Expect(launchState.Err()).To(MatchError("error starting container: banana"))
+		})
+
+		It("records chaincode launch failures", func() {
+			runtimeLauncher.Launch(ccci)
+			Expect(fakeLaunchFailures.WithCallCount()).To(Equal(1))
+			labelValues := fakeLaunchFailures.WithArgsForCall(0)
+			Expect(labelValues).To(Equal([]string{
+				"chaincode", "chaincode-name:chaincode-version",
+			}))
+			Expect(fakeLaunchFailures.AddCallCount()).To(Equal(1))
+			Expect(fakeLaunchFailures.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
 		})
 
 		It("stops the runtime", func() {
@@ -175,6 +217,17 @@ var _ = Describe("RuntimeLauncher", func() {
 			runtimeLauncher.Launch(ccci)
 			Eventually(launchState.Done()).Should(BeClosed())
 			Expect(launchState.Err()).To(MatchError("timeout expired while starting chaincode chaincode-name:chaincode-version for transaction"))
+		})
+
+		It("records chaincode launch timeouts", func() {
+			runtimeLauncher.Launch(ccci)
+			Expect(fakeLaunchTimeouts.WithCallCount()).To(Equal(1))
+			labelValues := fakeLaunchTimeouts.WithArgsForCall(0)
+			Expect(labelValues).To(Equal([]string{
+				"chaincode", "chaincode-name:chaincode-version",
+			}))
+			Expect(fakeLaunchTimeouts.AddCallCount()).To(Equal(1))
+			Expect(fakeLaunchTimeouts.AddArgsForCall(0)).To(BeNumerically("~", 1.0))
 		})
 
 		It("stops the runtime", func() {

@@ -28,6 +28,18 @@ type BlockGenerator struct {
 	t            *testing.T
 }
 
+type TxDetails struct {
+	TxID                            string
+	ChaincodeName, ChaincodeVersion string
+	SimulationResults               []byte
+}
+
+type BlockDetails struct {
+	BlockNum     uint64
+	PreviousHash []byte
+	Txs          []*TxDetails
+}
+
 // NewBlockGenerator instantiates new BlockGenerator for testing
 func NewBlockGenerator(t *testing.T, ledgerID string, signTxs bool) (*BlockGenerator, *common.Block) {
 	gb, err := test.MakeGenesisBlock(ledgerID)
@@ -44,7 +56,7 @@ func (bg *BlockGenerator) NextBlock(simulationResults [][]byte) *common.Block {
 	return block
 }
 
-// NextBlock constructs next block in sequence that includes a number of transactions - one per simulationResults
+// NextBlockWithTxid constructs next block in sequence that includes a number of transactions - one per simulationResults
 func (bg *BlockGenerator) NextBlockWithTxid(simulationResults [][]byte, txids []string) *common.Block {
 	// Length of simulationResults should be same as the length of txids.
 	if len(simulationResults) != len(txids) {
@@ -68,28 +80,54 @@ func (bg *BlockGenerator) NextTestBlock(numTx int, txSize int) *common.Block {
 // NextTestBlocks constructs 'numBlocks' number of blocks for testing
 func (bg *BlockGenerator) NextTestBlocks(numBlocks int) []*common.Block {
 	blocks := []*common.Block{}
+	numTx := 10
 	for i := 0; i < numBlocks; i++ {
-		blocks = append(blocks, bg.NextTestBlock(10, 100))
+		block := bg.NextTestBlock(numTx, 100)
+		block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = lutils.NewTxValidationFlagsSetValue(numTx, pb.TxValidationCode_VALID)
+		blocks = append(blocks, block)
 	}
 	return blocks
 }
 
 // ConstructTransaction constructs a transaction for testing
 func ConstructTransaction(_ *testing.T, simulationResults []byte, txid string, sign bool) (*common.Envelope, string, error) {
+	return ConstructTransactionFromTxDetails(
+		&TxDetails{
+			ChaincodeName:     "foo",
+			ChaincodeVersion:  "v1",
+			TxID:              txid,
+			SimulationResults: simulationResults,
+		},
+		sign,
+	)
+}
+
+func ConstructTransactionFromTxDetails(txDetails *TxDetails, sign bool) (*common.Envelope, string, error) {
 	ccid := &pb.ChaincodeID{
-		Name:    "foo",
-		Version: "v1",
+		Name:    txDetails.ChaincodeName,
+		Version: txDetails.ChaincodeVersion,
 	}
-	//response := &pb.Response{Status: 200}
-	var txID string
 	var txEnv *common.Envelope
 	var err error
+	var txID string
 	if sign {
-		txEnv, txID, err = ptestutils.ConstructSignedTxEnvWithDefaultSigner(util.GetTestChainID(), ccid, nil, simulationResults, txid, nil, nil)
+		txEnv, txID, err = ptestutils.ConstructSignedTxEnvWithDefaultSigner(util.GetTestChainID(), ccid, nil, txDetails.SimulationResults, txDetails.TxID, nil, nil)
 	} else {
-		txEnv, txID, err = ptestutils.ConstructUnsignedTxEnv(util.GetTestChainID(), ccid, nil, simulationResults, txid, nil, nil)
+		txEnv, txID, err = ptestutils.ConstructUnsignedTxEnv(util.GetTestChainID(), ccid, nil, txDetails.SimulationResults, txDetails.TxID, nil, nil)
 	}
 	return txEnv, txID, err
+}
+
+func ConstructBlockFromBlockDetails(t *testing.T, blockDetails *BlockDetails, sign bool) *common.Block {
+	var envs []*common.Envelope
+	for _, txDetails := range blockDetails.Txs {
+		env, _, err := ConstructTransactionFromTxDetails(txDetails, sign)
+		if err != nil {
+			t.Fatalf("ConstructTestTransaction failed, err %s", err)
+		}
+		envs = append(envs, env)
+	}
+	return NewBlock(envs, blockDetails.BlockNum, blockDetails.PreviousHash)
 }
 
 func ConstructBlockWithTxid(t *testing.T, blockNum uint64, previousHash []byte, simulationResults [][]byte, txids []string, sign bool) *common.Block {

@@ -35,10 +35,6 @@ func TestStartCmd(t *testing.T) {
 	viper.Set("peer.fileSystemPath", tempDir)
 	viper.Set("chaincode.executetimeout", "30s")
 	viper.Set("chaincode.mode", "dev")
-	overrideLogModules := []string{"msp", "gossip", "ledger", "cauthdsl", "policies", "grpc"}
-	for _, module := range overrideLogModules {
-		viper.Set("logging."+module, "INFO")
-	}
 
 	msptesttools.LoadMSPSetupForTesting()
 
@@ -47,6 +43,14 @@ func TestStartCmd(t *testing.T) {
 		assert.NoError(t, cmd.Execute(), "expected to successfully start command")
 	}()
 
+	grpcProbe := func(addr string) bool {
+		c, err := grpc.Dial(addr, grpc.WithBlock(), grpc.WithInsecure())
+		if err == nil {
+			c.Close()
+			return true
+		}
+		return false
+	}
 	g.Eventually(grpcProbe("localhost:6051")).Should(BeTrue())
 }
 
@@ -168,13 +172,4 @@ func TestComputeChaincodeEndpoint(t *testing.T) {
 
 	/*** Scenario 4: set up both chaincodeAddress and chaincodeListenAddress ***/
 	// This scenario will be the same to scenarios 3: set up chaincodeAddress only.
-}
-
-func grpcProbe(addr string) bool {
-	c, err := grpc.Dial(addr, grpc.WithBlock(), grpc.WithInsecure())
-	if err == nil {
-		c.Close()
-		return true
-	}
-	return false
 }

@@ -9,8 +9,7 @@ package encoder
 import (
 	"testing"
 
-	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
-
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/configtx"
 	"github.com/hyperledger/fabric/common/flogging"
@@ -20,15 +19,14 @@ import (
 	msptesttools "github.com/hyperledger/fabric/msp/mgmt/testtools"
 	cb "github.com/hyperledger/fabric/protos/common"
 	ab "github.com/hyperledger/fabric/protos/orderer"
+	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
 	"github.com/hyperledger/fabric/protos/utils"
-
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func init() {
-	flogging.SetModuleLevel(pkgLogID, "DEBUG")
+	flogging.ActivateSpec("common.tools.configtxgen.encoder=DEBUG")
 }
 
 func hasModPolicySet(t *testing.T, groupName string, cg *cb.ConfigGroup) {
@@ -258,6 +256,7 @@ func TestNewOrdererGroup(t *testing.T) {
 	})
 
 	t.Run("etcd/raft-based Orderer", func(t *testing.T) {
+		t.Skip()
 		config := configtxgentest.Load(genesisconfig.SampleDevModeEtcdRaftProfile)
 		group, _ := NewOrdererGroup(config.Orderer)
 		consensusType := group.GetValues()[channelconfig.ConsensusTypeKey]

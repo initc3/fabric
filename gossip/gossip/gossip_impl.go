@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	protoG "github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/gossip/api"
 	"github.com/hyperledger/fabric/gossip/comm"
 	"github.com/hyperledger/fabric/gossip/common"
@@ -68,7 +69,7 @@ func NewGossipService(conf *Config, s *grpc.Server, sa api.SecurityAdvisor,
 	secureDialOpts api.PeerSecureDialOpts) Gossip {
 	var err error
 
-	lgr := util.GetLogger(util.LoggingGossipModule, conf.ID)
+	lgr := util.GetLogger(util.GossipLogger, conf.ID)
 
 	g := &gossipServiceImpl{
 		selfOrg:               sa.OrgByPeerIdentity(selfIdentity),
@@ -111,7 +112,7 @@ func NewGossipService(conf *Config, s *grpc.Server, sa api.SecurityAdvisor,
 	g.discAdapter = g.newDiscoveryAdapter()
 	g.disSecAdap = g.newDiscoverySecurityAdapter()
 	g.disc = discovery.NewDiscoveryService(g.selfNetworkMember(), g.discAdapter, g.disSecAdap, g.disclosurePolicy)
-	g.logger.Info("Creating gossip service with self membership of", g.selfNetworkMember())
+	g.logger.Infof("Creating gossip service with self membership of %s", g.selfNetworkMember())
 
 	g.certPuller = g.createCertStorePuller()
 	g.certStore = newCertStore(g.certPuller, g.idMapper, selfIdentity, mcs)
@@ -119,7 +120,9 @@ func NewGossipService(conf *Config, s *grpc.Server, sa api.SecurityAdvisor,
 	if g.conf.ExternalEndpoint == "" {
 		g.logger.Warning("External endpoint is empty, peer will not be accessible outside of its organization")
 	}
-
+	// Adding delta for handlePresumedDead and
+	// acceptMessages goRoutines to block on Wait
+	g.stopSignal.Add(2)
 	go g.start()
 	go g.connect2BootstrapPeers()
 
@@ -271,7 +274,6 @@ func (g *gossipServiceImpl) learnAnchorPeers(channel string, orgOfAnchorPeers ap
 
 func (g *gossipServiceImpl) handlePresumedDead() {
 	defer g.logger.Debug("Exiting")
-	g.stopSignal.Add(1)
 	defer g.stopSignal.Done()
 	for {
 		select {
@@ -319,7 +321,6 @@ func (g *gossipServiceImpl) start() {
 
 func (g *gossipServiceImpl) acceptMessages(incMsgs <-chan proto.ReceivedMessage) {
 	defer g.logger.Debug("Exiting")
-	g.stopSignal.Add(1)
 	defer g.stopSignal.Done()
 	for {
 		select {
@@ -418,12 +419,6 @@ func (g *gossipServiceImpl) validateMsg(msg proto.ReceivedMessage) bool {
 	if err := msg.GetGossipMessage().IsTagLegal(); err != nil {
 		g.logger.Warningf("Tag of %v isn't legal: %v", msg.GetGossipMessage(), errors.WithStack(err))
 		return false
-	}
-
-	if msg.GetGossipMessage().IsAliveMsg() {
-		if !g.disSecAdap.ValidateAliveMsg(msg.GetGossipMessage()) {
-			return false
-		}
 	}
 
 	if msg.GetGossipMessage().IsStateInfoMsg() {
@@ -763,12 +758,6 @@ func (g *gossipServiceImpl) Stop() {
 	}
 	atomic.StoreInt32(&g.stopFlag, int32(1))
 	g.logger.Info("Stopping gossip")
-	comWG := sync.WaitGroup{}
-	comWG.Add(1)
-	go func() {
-		defer comWG.Done()
-		g.comm.Stop()
-	}()
 	g.chanState.stop()
 	g.discAdapter.close()
 	g.disc.Stop()
@@ -778,7 +767,7 @@ func (g *gossipServiceImpl) Stop() {
 	g.ChannelDeMultiplexer.Close()
 	g.stateInfoMsgStore.Stop()
 	g.stopSignal.Wait()
-	comWG.Wait()
+	g.comm.Stop()
 }
 
 func (g *gossipServiceImpl) UpdateMetadata(md []byte) {
@@ -949,15 +938,22 @@ func (da *discoveryAdapter) SendToPeer(peer *discovery.NetworkMember, msg *proto
 			SelfInformation: selfMsg.Envelope,
 			Known:           oldKnown,
 		}
+		msgCopy := protoG.Clone(msg.GossipMessage).(*proto.GossipMessage)
+
 		// Update original message
-		msg.Content = &proto.GossipMessage_MemReq{
+		msgCopy.Content = &proto.GossipMessage_MemReq{
 			MemReq: memReq,
 		}
 		// Update the envelope of the outer message, no need to sign (point2point)
-		msg, err = msg.NoopSign()
+		msg, err = (&proto.SignedGossipMessage{
+			GossipMessage: msgCopy,
+		}).NoopSign()
+
 		if err != nil {
 			return
 		}
+		da.c.Send(msg, &comm.RemotePeer{PKIID: peer.PKIid, Endpoint: peer.PreferredEndpoint()})
+		return
 	}
 	da.c.Send(msg, &comm.RemotePeer{PKIID: peer.PKIid, Endpoint: peer.PreferredEndpoint()})
 }
@@ -1017,7 +1013,7 @@ func (sa *discoverySecurityAdapter) ValidateAliveMsg(m *proto.SignedGossipMessag
 		claimedPKIID := am.Membership.PkiId
 		err := sa.idMapper.Put(claimedPKIID, identity)
 		if err != nil {
-			sa.logger.Warningf("Failed validating identity of %v reason: %+v", am, errors.WithStack(err))
+			sa.logger.Debugf("Failed validating identity of %v reason: %+v", am, errors.WithStack(err))
 			return false
 		}
 	} else {
@@ -1268,10 +1264,11 @@ func (g *gossipServiceImpl) disclosurePolicy(remotePeer *discovery.NetworkMember
 			// or the message has an external endpoint, and the remote peer also has one
 			return bytes.Equal(org, remotePeerOrg) || msg.GetAliveMsg().Membership.Endpoint != "" && remotePeer.Endpoint != ""
 		}, func(msg *proto.SignedGossipMessage) *proto.Envelope {
+			envelope := protoG.Clone(msg.Envelope).(*proto.Envelope)
 			if !bytes.Equal(g.selfOrg, remotePeerOrg) {
-				msg.SecretEnvelope = nil
+				envelope.SecretEnvelope = nil
 			}
-			return msg.Envelope
+			return envelope
 		}
 }
 

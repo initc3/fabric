@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	cb "github.com/hyperledger/fabric/protos/common"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -61,6 +60,13 @@ func TestApplicationPvtDataExperimental(t *testing.T) {
 		ApplicationPvtDataExperimental: {},
 	})
 	assert.True(t, ap.PrivateChannelData())
+}
+
+func TestFabTokenExperimental(t *testing.T) {
+	ap := NewApplicationProvider(map[string]*cb.Capability{
+		ApplicationFabTokenExperimental: {},
+	})
+	assert.True(t, ap.FabToken())
 }
 
 func TestHasCapability(t *testing.T) {

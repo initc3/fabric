@@ -17,14 +17,13 @@ import (
 	genesisconfig "github.com/hyperledger/fabric/common/tools/configtxgen/localconfig"
 	cb "github.com/hyperledger/fabric/protos/common"
 	ab "github.com/hyperledger/fabric/protos/orderer"
-
 	"github.com/stretchr/testify/assert"
 )
 
 var genesisBlock = cb.NewBlock(0, nil)
 
 func init() {
-	flogging.SetModuleLevel(pkgLogID, "DEBUG")
+	flogging.ActivateSpec("common.ledger.blockledger.json=DEBUG")
 }
 
 type testEnv struct {

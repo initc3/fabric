@@ -26,6 +26,7 @@ import (
 	configtxtest "github.com/hyperledger/fabric/common/configtx/test"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage/fsblkstorage"
 	"github.com/hyperledger/fabric/common/ledger/testutil"
+	"github.com/hyperledger/fabric/common/metrics/disabled"
 	"github.com/hyperledger/fabric/common/util"
 	lgr "github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/ledgerconfig"
@@ -308,6 +309,38 @@ func testutilNewProvider(t *testing.T) lgr.PeerLedgerProvider {
 	assert.NoError(t, err)
 	provider.Initialize(&lgr.Initializer{
 		DeployedChaincodeInfoProvider: &mock.DeployedChaincodeInfoProvider{},
+		MetricsProvider:               &disabled.Provider{},
 	})
+	return provider
+}
+
+func testutilNewProviderWithCollectionConfig(t *testing.T, namespace string, btlConfigs map[string]uint64) lgr.PeerLedgerProvider {
+	provider := testutilNewProvider(t)
+	mockCCInfoProvider := provider.(*Provider).initializer.DeployedChaincodeInfoProvider.(*mock.DeployedChaincodeInfoProvider)
+	collMap := map[string]*common.StaticCollectionConfig{}
+	var conf []*common.CollectionConfig
+	for collName, btl := range btlConfigs {
+		staticConf := &common.StaticCollectionConfig{Name: collName, BlockToLive: btl}
+		collMap[collName] = staticConf
+		collectionConf := &common.CollectionConfig{}
+		collectionConf.Payload = &common.CollectionConfig_StaticCollectionConfig{StaticCollectionConfig: staticConf}
+		conf = append(conf, collectionConf)
+	}
+	collectionConfPkg := &common.CollectionConfigPackage{Config: conf}
+
+	mockCCInfoProvider.ChaincodeInfoStub = func(ccName string, qe lgr.SimpleQueryExecutor) (*lgr.DeployedChaincodeInfo, error) {
+		if ccName == namespace {
+			return &lgr.DeployedChaincodeInfo{
+				Name: namespace, CollectionConfigPkg: collectionConfPkg}, nil
+		}
+		return nil, nil
+	}
+
+	mockCCInfoProvider.CollectionInfoStub = func(ccName, collName string, qe lgr.SimpleQueryExecutor) (*common.StaticCollectionConfig, error) {
+		if ccName == namespace {
+			return collMap[collName], nil
+		}
+		return nil, nil
+	}
 	return provider
 }

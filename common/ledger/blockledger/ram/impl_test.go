@@ -19,7 +19,7 @@ import (
 var genesisBlock = cb.NewBlock(0, nil)
 
 func init() {
-	flogging.SetModuleLevel(pkgLogID, "DEBUG")
+	flogging.ActivateSpec("common.ledger.blockledger.ram=DEBUG")
 }
 
 func newTestChain(maxSize int) *ramLedger {

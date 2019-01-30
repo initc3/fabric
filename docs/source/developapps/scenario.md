@@ -46,7 +46,7 @@ At the end of May, MagnetoCorp needs 5M USD to meet payroll for the extra
 workers it hired on May 1. To do this, it issues a commercial paper with a face
 value of 5M USD with a maturity date 6 months in the future -- when it expects
 to see cash flow from Daintree. DigiBank thinks that MagnetoCorp is
-creditworthy, and therefore doesn't require much a premium above the central
+creditworthy, and therefore doesn't require much of a premium above the central
 bank base rate of 2%, which would value 4.95M USD today at 5M USD in 6 months
 time. It therefore purchases the MagnetoCorp 6 month commercial paper for 4.94M
 USD -- a slight discount compared to the 4.95M USD it is worth. DigiBank fully
@@ -70,9 +70,23 @@ with MagnetoCorp. This latter figure depends on a variety of factors such as the
 production of Model D cars, and the creditworthiness of MagnetoCorp as assessed
 by RateM, a ratings agency.
 
+The organizations in PaperNet have different roles, MagnetoCorp issues paper,
+DigiBank, BigFund, HedgeMatic and BrokerHouse trade paper and RateM rates paper.
+Organizations of the same role, such as DigiBank, Bigfund, HedgeMatic and
+BrokerHouse are competitors. Organizations of different roles are not
+necessarily competitors, yet might still have opposing business interest, for
+example MagentoCorp will desire a high rating for its papers to sell them at
+a high price, while DigiBank would benefit from a low rating, such that it can
+buy them at a low price. As can be seen, even a seemingly simple network such
+as PaperNet can have complex trust relationships. A blockchain can help
+establish trust among organizations that are competitors or have opposing
+business interests that might lead to disputes. Fabric in particular has the
+means to capture even fine-grained trust relationships.
+
 Let's pause the MagnetoCorp story for a moment, and develop the client
 applications and smart contracts that PaperNet uses to issue, buy, sell and
-redeem commercial paper.  We'll come back to the role of the rating agency,
+redeem commercial paper as well as capture the trust relationships between
+the organizations.  We'll come back to the role of the rating agency,
 RateM, a little later.
 
 <!--- Licensed under Creative Commons Attribution 4.0 International License

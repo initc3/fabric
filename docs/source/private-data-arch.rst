@@ -1,7 +1,7 @@
 Private Data
 ============
 
-.. note:: This topic assumes an understand of the conceptual material in the
+.. note:: This topic assumes an understanding of the conceptual material in the
           `documentation on private data <private-data/private-data.html>`_.
 
 Private data collection definition
@@ -9,47 +9,67 @@ Private data collection definition
 
 A collection definition contains one or more collections, each having a policy
 definition listing the organizations in the collection, as well as properties
-used to control endorsement and, optionally, whether the data will be purged.
+used to control dissemination of private data at endorsement time and,
+optionally, whether the data will be purged.
 
 The collection definition gets deployed to the channel at the time of chaincode
-instantiation. If using the peer CLI to instantiate the chaincode, the
+instantiation (or upgrade). If using the peer CLI to instantiate the chaincode, the
 collection definition file is passed to the chaincode instantiation
 using the ``--collections-config`` flag. If using a client SDK, check the `SDK
 documentation <https://fabric-sdk-node.github.io/>`_ for information on providing the collection
 definition.
 
-Collection definitions are composed of five properties:
+Collection definitions are composed of the following properties:
 
 * ``name``: Name of the collection.
 
-* ``policy``: Defines the organization peers allowed to persist the collection
-  data expressed using the ``Signature`` policy syntax, with each member being
-  included in an ``OR`` signature policy list.
+* ``policy``: The private data collection distribution policy defines which
+  organizations' peers are allowed to persist the collection data expressed using
+  the ``Signature`` policy syntax, with each member being included in an ``OR``
+  signature policy list. To support read/write transactions, the private data
+  distribution policy must define a broader set of organizations than the chaincode
+  endorsement policy, as peers must have the private data in order to endorse
+  proposed transactions. For example, in a channel with ten organizations,
+  five of the organizations might be included in a private data collection
+  distribution policy, but the endorsement policy might call for any three
+  of the organizations to endorse.
 
-* ``requiredPeerCount``: Minimum number of peers that the endorsing peer must
-  successfully disseminate private data to before the peer signs the
-  endorsement and returns the proposal response back to the client. When
+* ``requiredPeerCount``: Minimum number of peers (across authorized organizations)
+  that each endorsing peer must successfully disseminate private data to before the
+  peer signs the endorsement and returns the proposal response back to the client.
+  Requiring dissemination as a condition of endorsement will ensure that private data
+  is available in the network even if the endorsing peer(s) become unavailable. When
   ``requiredPeerCount`` is ``0``, it means that no distribution is **required**,
   but there may be some distribution if ``maxPeerCount`` is greater than zero. A
   ``requiredPeerCount`` of ``0`` would typically not be recommended, as it could
-  lead to loss of private data. Typically you would want to require at least some
-  distribution of the private data at endorsement time to ensure redundancy of the
-  private data on multiple peers in the network.
+  lead to loss of private data in the network if the endorsing peer(s) becomes unavailable.
+  Typically you would want to require at least some distribution of the private
+  data at endorsement time to ensure redundancy of the private data on multiple
+  peers in the network.
 
-* ``maxPeerCount``: For data redundancy purposes, the number of other peers
-  that the current endorsing peer will attempt to distribute the data to. If an
-  endorsing peer becomes unavailable between endorsement time and commit time,
-  other peers that are collection members but who did not yet receive the private
-  data, will be able to pull the private data from the peers the private data was
-  disseminated to. If this value is set to ``0``, the private data is not
-  disseminated at endorsement time, forcing private data pulls on all authorized
-  peers.
+* ``maxPeerCount``: For data redundancy purposes, the maximum number of other
+  peers (across authorized organizations) that each endorsing peer will attempt
+  to distribute the private data to. If an endorsing peer becomes unavailable between
+  endorsement time and commit time, other peers that are collection members but who
+  did not yet receive the private data at endorsement time, will be able to pull
+  the private data from peers the private data was disseminated to. If this value
+  is set to ``0``, the private data is not disseminated at endorsement time,
+  forcing private data pulls against endorsing peers on all authorized peers at
+  commit time.
 
 * ``blockToLive``: Represents how long the data should live on the private
   database in terms of blocks. The data will live for this specified number of
   blocks on the private database and after that it will get purged, making this
   data obsolete from the network. To keep private data indefinitely, that is, to
   never purge private data, set the ``blockToLive`` property to ``0``.
+
+* ``memberOnlyRead``: a value of ``true`` indicates that peers automatically
+  enforce that only clients belonging to one of the collection member organizations
+  are allowed read access to private data. If a client from a non-member org
+  attempts to execute a chaincode function that performs a read of a private data,
+  the chaincode invocation is terminated with an error. Utilize a value of
+  ``false`` if you would like to encode more granular access control within
+  individual chaincode functions.
 
 Here is a sample collection definition JSON file, containing an array of two
 collection definitions:
@@ -62,14 +82,16 @@ collection definitions:
      "policy": "OR('Org1MSP.member', 'Org2MSP.member')",
      "requiredPeerCount": 0,
      "maxPeerCount": 3,
-     "blockToLive":1000000
+     "blockToLive":1000000,
+     "memberOnlyRead": true
   },
   {
      "name": "collectionMarblePrivateDetails",
      "policy": "OR('Org1MSP.member')",
      "requiredPeerCount": 0,
      "maxPeerCount": 3,
-     "blockToLive":3
+     "blockToLive":3,
+     "memberOnlyRead": true
   }
  ]
 
@@ -82,18 +104,40 @@ to a subset of organizations in the channel (in this case ``Org1`` ). In a real
 scenario, there would be many organizations in the channel, with two or more
 organizations in each collection sharing private data between them.
 
+Endorsement
+~~~~~~~~~~~
+
+Since private data is not included in the transactions that get submitted to
+the ordering service, and therefore not included in the blocks that get distributed
+to all peers in a channel, the endorsing peer plays an important role in
+disseminating private data to other peers of authorized organizations. This ensures
+the availability of private data in the channel's collection, even if endorsing
+peers become unavailable after their endorsement. To assist with this dissemination,
+the  ``maxPeerCount`` and ``requiredPeerCount`` properties in the collection definition
+control the degree of dissemination at endorsement time.
+
+If the endorsing peer cannot successfully disseminate the private data to at least
+the ``requiredPeerCount``, it will return an error back to the client. The endorsing
+peer will attempt to disseminate the private data to peers of different organizations,
+in an effort to ensure that each authorized organization has a copy of the private
+data. Since transactions are not committed at chaincode execution time, the endorsing
+peer and recipient peers store a copy of the private data in a local ``transient store``
+alongside their blockchain until the transaction is committed.
+
 How private data is committed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When authorized peers do not have a copy of the private data in their transient
-data store they will attempt to pull the private data from another authorized
+data store at commit time (either because they were not an endorsing peer or because
+they did not receive the private data via dissemination at endorsement time),
+they will attempt to pull the private data from another authorized
 peer, *for a configurable amount of time* based on the peer property
 ``peer.gossip.pvtData.pullRetryThreshold`` in the peer configuration ``core.yaml``
 file.
 
 .. note:: The peers being asked for private data will only return the private data
           if the requesting peer is a member of the collection as defined by the
-          policy.
+          private data dissemination policy.
 
 Considerations when using ``pullRetryThreshold``:
 
@@ -107,7 +151,7 @@ Considerations when using ``pullRetryThreshold``:
   (including the private data hash), without the private data.
 
 * If the peer was entitled to the private data but it is missing, then
-  that the peer will not be able to endorse future transactions that reference
+  that peer will not be able to endorse future transactions that reference
   the missing private data - a chaincode query for a key that is missing will
   be detected (based on the presence of the key’s hash in the state database),
   and the chaincode will receive an error.
@@ -121,23 +165,6 @@ properties will have ensured the private data is available on other peers.
 .. note:: For collections to work, it is important to have cross organizational
           gossip configured correctly. Refer to our documentation on :doc:`gossip`,
           paying particular attention to the section on "anchor peers".
-
-Endorsement
-~~~~~~~~~~~
-
-The endorsing peer plays an important role in disseminating private data to
-other authorized peers, ensuring the availability of private data on the
-channel. To assist with this dissemination, the  ``maxPeerCount`` and
-``requiredPeerCount`` properties in the collection definition control the
-dissemination behavior.
-
-If the endorsing peer cannot successfully disseminate the private data to at least
-the ``requiredPeerCount``, it will return an error back to the client. The endorsing
-peer will attempt to disseminate the private data to peers of different organizations,
-in an effort to ensure that each authorized organization has a copy of the private
-data. Since transactions are not committed at chaincode execution time, the endorsing
-peer and recipient peers store a copy of the private data in a local ``transient store``
-alongside their blockchain until the transaction is committed.
 
 Referencing collections from chaincode
 --------------------------------------
@@ -160,8 +187,43 @@ not to include private data in the main part of the chaincode proposal. A specia
 field in the chaincode proposal called the ``transient`` field can be used to pass
 private data from the client (or data that chaincode will use to generate private
 data), to chaincode invocation on the peer.  The chaincode can retrieve the
-``transient`` field by calling the ```GetTransient()`` API <https://github.com/hyperledger/fabric/blob/13447bf5ead693f07285ce63a1903c5d0d25f096/core/chaincode/shim/interfaces_stable.go>`_.
+``transient`` field by calling the `GetTransient() API <https://github.com/hyperledger/fabric/blob/8b3cbda97e58d1a4ff664219244ffd1d89d7fba8/core/chaincode/shim/interfaces.go#L315-L321>`_.
 This ``transient`` field gets excluded from the channel transaction.
+
+Reconciliation
+~~~~~~~~~~~~~~
+
+Starting in v1.4, a background process allows peers who are part of a collection
+to receive data they were entitled to receive but did not yet receive --- because of
+a network failure, for example --- by keeping track of private data that was "missing"
+at the time of block commit. The peer will periodically attempt to fetch the private
+data from other collection member peers that are expected to have it.
+
+This "reconciliation" also applies to peers of new organizations that are added to
+an existing collection. The same background process described above
+will also attempt to fetch private data that was committed before they joined
+the collection.
+
+Note that this private data reconciliation feature only works on peers running
+v1.4 or later of Fabric.
+
+Access control for private data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Until version 1.3, access control to private data based on collection membership
+was enforced for peers only. Access control based on the organization of the
+chaincode proposal submitter was required to be encoded in chaincode logic.
+Starting in v1.4 a collection configuration option ``memberOnlyRead`` can
+automatically enforce access control based on the organization of the chaincode
+proposal submitter. For more information about collection
+configuration definitions and how to set them, refer back to the
+`Private data collection definition`_  section of this topic.
+
+.. note:: If you would like more granular access control, you can set
+          ``memberOnlyRead`` to false. You can then apply your own access
+          control logic in chaincode, for example by calling the GetCreator()
+          chaincode API or using the client identity
+          `chaincode library <https://github.com/hyperledger/fabric/tree/master/core/chaincode/shim/ext/cid>`__ .
 
 Considerations when using private data
 --------------------------------------
@@ -197,14 +259,6 @@ Limitations:
   chaincode function to make the updates. Note that calls to GetPrivateData() to retrieve
   individual keys can be made in the same transaction as PutPrivateData() calls, since
   all peers can validate key reads based on the hashed key version.
-* Note that private data collections only define which organization’s peers
-  are authorized to receive and store private data, and consequently implies
-  which peers can be used to query private data. Private data collections do not
-  by themselves limit access control within chaincode. For example if
-  non-authorized clients are able to invoke chaincode on peers that have access
-  to the private data, the chaincode logic still needs a means to enforce access
-  control as usual, for example by calling the GetCreator() chaincode API or
-  using the client identity `chaincode library <https://github.com/hyperledger/fabric/tree/master/core/chaincode/lib/cid>`__ .
 
 Using Indexes with collections
 ------------------------------

@@ -8,9 +8,9 @@ package statecouchdb
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
+	"github.com/hyperledger/fabric/common/metrics/disabled"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestVDBEnv provides a couch db backed versioned db for testing
@@ -23,7 +23,7 @@ type TestVDBEnv struct {
 func NewTestVDBEnv(t testing.TB) *TestVDBEnv {
 	t.Logf("Creating new TestVDBEnv")
 
-	dbProvider, _ := NewVersionedDBProvider()
+	dbProvider, _ := NewVersionedDBProvider(&disabled.Provider{})
 	testVDBEnv := &TestVDBEnv{t, dbProvider}
 	// No cleanup for new test environment.  Need to cleanup per test for each DB used in the test.
 	return testVDBEnv

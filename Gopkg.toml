@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 required = [
+    "golang.org/x/lint/golint",
+    "golang.org/x/tools/cmd/goimports",
     "github.com/golang/protobuf/protoc-gen-go",
 ]
 
@@ -20,16 +22,6 @@ noverify = [
 [[constraint]]
   name = "github.com/Shopify/sarama"
   version = "1.19.0"
-
-# Pinned in support of sarama as newer commits have data races
-# https://github.com/rcrowley/go-metrics/issues/245
-[[override]]
-  name = "github.com/rcrowley/go-metrics"
-  revision = "8732c616f52954686704c8645fe1a9d59e9df7c1"
-
-[[constraint]]
-  name = "github.com/cactus/go-statsd-client"
-  version = "3.1.1"
 
 [[constraint]]
   name = "github.com/davecgh/go-spew"
@@ -66,6 +58,10 @@ noverify = [
   name = "github.com/hyperledger/fabric-amcl"
 
 [[constraint]]
+  name = "github.com/hyperledger/fabric-lib-go"
+  version = "1.0.0"
+
+[[constraint]]
   branch = "master"
   name = "github.com/kr/pretty"
 
@@ -83,10 +79,6 @@ noverify = [
 
 [[constraint]]
   name = "github.com/pkg/errors"
-  version = "0.8.0"
-
-[[constraint]]
-  name = "github.com/prometheus/client_golang"
   version = "0.8.0"
 
 [[constraint]]
@@ -110,12 +102,12 @@ noverify = [
   name = "github.com/syndtr/goleveldb"
 
 [[constraint]]
-  name = "github.com/uber-go/tally"
-  version = "=3.3.2"
-
-[[constraint]]
   branch = "master"
   name = "golang.org/x/crypto"
+
+[[constraint]]
+  name = "golang.org/x/lint"
+  revision = "c67002cb31c3a748b7688c27f20d8358b4193582"
 
 [[constraint]]
   branch = "master"
@@ -124,6 +116,10 @@ noverify = [
 [[constraint]]
   branch = "master"
   name = "golang.org/x/sync"
+
+[[constraint]]
+  name = "golang.org/x/tools"
+  revision = "f60e5f99f0816fc2d9ecb338008ea420248d2943"
 
 [[constraint]]
   name = "google.golang.org/grpc"
@@ -169,6 +165,10 @@ noverify = [
   name = "github.com/willf/bitset"
   version = "1.1.8"
 
+[[constraint]]
+  name = "github.com/go-kit/kit"
+  version = "0.7.0"
+
 [prune]
   go-tests = true
   unused-packages = true
@@ -185,3 +185,7 @@ noverify = [
   [[prune.project]]
       name = "github.com/coreos/etcd"
       non-go = false
+
+[[constraint]]
+  name = "github.com/prometheus/client_golang"
+  version = "0.9.0"

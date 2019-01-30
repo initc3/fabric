@@ -8,6 +8,44 @@ First things first, please review the Hyperledger `Code of
 Conduct <https://wiki.hyperledger.org/community/hyperledger-project-code-of-conduct>`__
 before participating. It is important that we keep things civil.
 
+Ways to contribute
+------------------
+There are many ways you can contribute to Hyperledger Fabric, both as a user and
+as a developer.
+
+As a user:
+
+- `Making Feature/Enhancement Proposals`_
+- `Reporting bugs`_
+- Help test an upcoming Epic on the
+  `release roadmap <https://jira.hyperledger.org/secure/Dashboard.jspa?selectPageId=10104>`_.
+  Contact the Epic assignee via the Jira work item or on
+  `RocketChat <https://chat.hyperledger.org>`_.
+
+As a developer:
+
+- If you only have a little time, consider picking up a
+  `"help-wanted" <https://jira.hyperledger.org/issues/?filter=10147>`_ task,
+  see `Fixing issues and working stories`_.
+- If you can commit to full-time development, either propose a new feature
+  (see `Making Feature/Enhancement Proposals`_) and
+  bring a team to implement it, or join one of the teams working on an existing Epic.
+  If you see an Epic that interests you on the
+  `release roadmap <https://jira.hyperledger.org/secure/Dashboard.jspa?selectPageId=10104>`_,
+  contact the Epic assignee via the Jira work item or on `RocketChat <https://chat.hyperledger.org/>`_.
+
+Getting a Linux Foundation account
+----------------------------------
+
+In order to participate in the development of the Hyperledger Fabric
+project, you will need a :doc:`Linux Foundation
+account <Gerrit/lf-account>`. You will need to use your LF ID to
+access to all the Hyperledger community tools, including
+`Gerrit <https://gerrit.hyperledger.org>`__,
+`Jira <https://jira.hyperledger.org>`__,
+`RocketChat <https://chat.hyperledger.org/>`__, and the
+`Wiki <https://wiki.hyperledger.org/start>`__ (for editing, only).
+
 Project Governance
 ------------------
 
@@ -49,8 +87,7 @@ The Fabric maintainers have settled on a quarterly (approximately) release
 cadence (see `releases <https://github.com/hyperledger/fabric#releases>`__).
 We are also actively considering adopting an LTS (long term support) release
 process, though the details of this are still being worked out by the
-maintainers. Follow the discussion on the #fabric-maintainers channel in Rocket
-Chat.
+maintainers. Follow the discussion on the #fabric-maintainers channel in Chat.
 
 Making Feature/Enhancement Proposals
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -120,17 +157,6 @@ you have all the :doc:`prerequisites <prereqs>` installed on the platform(s)
 on which you'll be developing blockchain applications and/or operating
 Hyperledger Fabric.
 
-Getting a Linux Foundation account
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In order to participate in the development of the Hyperledger Fabric
-project, you will need a :doc:`Linux Foundation
-account <Gerrit/lf-account>`. You will need to use your LF ID to
-access to all the Hyperledger community development tools, including
-`Gerrit <https://gerrit.hyperledger.org>`__,
-`Jira <https://jira.hyperledger.org>`__ and the
-`Wiki <https://wiki.hyperledger.org/start>`__ (for editing, only).
-
 Getting help
 ~~~~~~~~~~~~
 
@@ -163,7 +189,7 @@ sufficient information for someone else to reproduce the
 issue. One of the project's maintainers should respond to your issue within 24
 hours. If not, please bump the issue with a comment and request that it be
 reviewed. You can also post to the relevant Hyperledger Fabric channel in
-`Hyperledger Rocket Chat <https://chat.hyperledger.org>`__.  For example, a doc bug should
+`Hyperledger Chat <https://chat.hyperledger.org>`__.  For example, a doc bug should
 be broadcast to ``#fabric-documentation``, a database bug to ``#fabric-ledger``,
 and so on...
 
@@ -275,7 +301,7 @@ What makes a good change request?
    your subsequent requests may be held up because of review comments in the
    preceding requests.
 
--  Write a meaningful commit message. Include a meaningful 50 (or less)
+-  Write a meaningful commit message. Include a meaningful 55 (or less)
    character title, followed by a blank line, followed by a more
    comprehensive description of the change. Each change MUST include the JIRA
    identifier corresponding to the change (e.g. [FAB-1234]). This can be

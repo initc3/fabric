@@ -6,9 +6,11 @@ professionals
 Let's analyze commercial paper in a little more detail. PaperNet participants
 such as MagnetoCorp and DigiBank use commercial paper transactions to achieve
 their business objectives -- let's examine the structure of a commercial paper
-and the transactions that affect it over time. Later we'll focus on how money
-flows between buyers and sellers; for now, let's focus on the first paper issued
-by MagnetoCorp.
+and the transactions that affect it over time. We will also consider which
+organizations in PaperNet need to sign off on a transaction based on the trust
+relationships among the organizations in the network. Later we'll focus on how
+money flows between buyers and sellers; for now, let's focus on the first paper
+issued by MagnetoCorp.
 
 ## Commercial paper lifecycle
 
@@ -69,6 +71,12 @@ Current state = redeemed
 This final **redeem** transaction has ended the commercial paper's lifecycle --
 it can be considered closed. It is often mandatory to keep a record of redeemed
 commercial papers, and the `redeemed` state allows us to quickly identify these.
+The value of `Owner` of a paper can be used to perform access control on the
+**redeem** transaction, by comparing the `Owner` against the identity of the
+transaction creator. Fabric supports this through the
+[`getCreator()` chaincode API](https://github.com/hyperledger/fabric-chaincode-node/blob/master/fabric-shim/lib/stub.js#L293).
+If golang is used as a chaincode language, the [client identity chaincode library](https://github.com/hyperledger/fabric/blob/master/core/chaincode/shim/ext/cid/README.md)
+can be used to retrieve additional attributes of the transaction creator.
 
 ## Transactions
 
@@ -100,6 +108,10 @@ a state of PaperNet that is a result of the **issue** transaction. It's the
 logic behind the **issue** transaction (which we cannot see) that takes these
 properties and creates this paper. Because the transaction **creates** the
 paper, it means there's a very close relationship between these structures.
+
+The only organization that is involved in the **issue** transaction is MagnetoCorp.
+Naturally, MagnetoCorp needs to sign off on the transaction. In general, the issuer
+of a paper is required to sign off on a transaction that issues a new paper.
 
 ### Buy
 
@@ -133,10 +145,10 @@ transactions that affect this paper, as well its latest state. Being clear on
 this separation of information is really important.
 
 It's also worth remembering that paper 00001 may be bought and sold many times.
-For example, we might see the following transactions as paper 0001 changes
-ownership.
+Although we're skipping ahead a little in our scenario, let's examine what
+transactions we **might** see if paper 00001 changes ownership.
 
-A purchase by BigFund:
+If we have a purchase by BigFund:
 
 ```
 Txn = buy
@@ -147,7 +159,7 @@ New owner = BigFund
 Purchase time = 2 June 2020 12:20:00 EST
 Price = 4.93M USD
 ```
-A subsequent purchase by HedgeMatic:
+Followed by a subsequent purchase by HedgeMatic:
 ```
 Txn = buy
 Issuer = MagnetoCorp
@@ -158,14 +170,19 @@ Purchase time = 3 June 2020 15:59:00 EST
 Price = 4.90M USD
 ```
 
-Can you think of a reason why the price of MagnetoCorp commercial paper
-might be falling?
+See how the paper owners changes, and how in out example, the price changes. Can
+you think of a reason why the price of MagnetoCorp commercial paper might be
+falling?
+
+Intuitively, a **buy** transaction demands that both the selling as well as the
+buying organization need to sign off on such a transaction such that there is
+proof of the mutual agreement among the two parties that are part of the deal.
 
 ### Redeem
 
 The **redeem** transaction for paper 00001 represents the end of its lifecycle.
-DigiBank initiates the transaction which transfers the commercial paper back to
-MagnetoCorp:
+In our relatively simple example, DigiBank initiates the transaction which
+transfers the commercial paper back to MagnetoCorp:
 
 ```
 Txn = redeem
@@ -181,6 +198,10 @@ the `Issuer` will become the new owner, and the `Current state` will change to
 `redeemed`. The `Current owner` property is specified in our example, so that it
 can be checked against the current holder of the paper.
 
+From a trust perspective, the same reasoning of the **buy** transaction also
+applies to the **redeem** instruction: both organizations involved in the
+transaction are required to sign off on it.
+
 ## The Ledger
 
 In this topic, we've seen how transactions and the resultant paper states are
@@ -190,10 +211,16 @@ fundamental elements in any Hyperledger Fabric distributed
 value of all objects, and a blockchain that records the history of all
 transactions that resulted in the current world state.
 
-You're now in a great place to translate these ideas into a smart contract.
-Don't worry if your programming is a little rusty, we'll provide tips and
-pointers to understand the program code. Mastering the commercial paper smart
-contract is the first big step towards designing your own application.
+The required sign-offs on transactions are enforced through rules, which
+are evaluated before appending a transaction to the ledger. Only if the
+required signatures are present, Fabric will accept a transaction as valid.
+
+You're now in a great place translate these ideas into a smart contract. Don't
+worry if your programming is a little rusty, we'll provide tips and pointers to
+understand the program code. Mastering the commercial paper smart contract is
+the first big step towards designing your own application. Or, if you're a
+business analyst who's comfortable with a little programming, don't be afraid to
+keep dig a little deeper!
 
 <!--- Licensed under Creative Commons Attribution 4.0 International License
 https://creativecommons.org/licenses/by/4.0/ -->

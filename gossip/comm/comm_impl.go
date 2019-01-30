@@ -75,7 +75,7 @@ func NewCommInstanceWithServer(port int, idMapper identity.Mapper, peerIdentity 
 		pubSub:         util.NewPubSub(),
 		PKIID:          idMapper.GetPKIidOfCert(peerIdentity),
 		idMapper:       idMapper,
-		logger:         util.GetLogger(util.LoggingCommModule, fmt.Sprintf("%d", port)),
+		logger:         util.GetLogger(util.CommLogger, fmt.Sprintf("%d", port)),
 		peerIdentity:   peerIdentity,
 		opts:           dialOpts,
 		secureDialOpts: secureDialOpts,
@@ -579,12 +579,6 @@ func (c *commImpl) GossipStream(stream proto.Gossip_GossipStreamServer) error {
 
 	conn := c.connStore.onConnected(stream, connInfo)
 
-	// if connStore denied the connection, it means we already have a connection to that peer
-	// so close this stream
-	if conn == nil {
-		return nil
-	}
-
 	h := func(m *proto.SignedGossipMessage) {
 		c.msgPublisher.DeMultiplex(&ReceivedMessageImpl{
 			conn:                conn,
@@ -644,8 +638,8 @@ func readWithTimeout(stream interface{}, timeout time.Duration, address string) 
 		}
 	}()
 	select {
-	case <-time.NewTicker(timeout).C:
-		return nil, errors.Errorf("Timed out waiting for connection message from %s", address)
+	case <-time.After(timeout):
+		return nil, errors.Errorf("timed out waiting for connection message from %s", address)
 	case m := <-incChan:
 		return m, nil
 	case err := <-errChan:
