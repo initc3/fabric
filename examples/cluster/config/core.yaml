@@ -317,6 +317,14 @@ chaincode:
         escc: enable
         vscc: enable
         qscc: enable
+        honeybadgerscc: enable
+    systemPlugins:
+        # example configuration:
+        - enabled: true
+        name: honeybadgerscc
+        path: /opt/lib/honeybadgerscc.so
+        invokableExternal: true
+        invokableCC2CC: true
 
     # logging section for the chaincode container
     logLevel: warning

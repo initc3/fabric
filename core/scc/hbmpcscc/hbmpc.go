@@ -107,7 +107,7 @@ func New(aclProvider aclmgmt.ACLProvider) *MpcEngine {
 	}
 	fmt.Println(peer0org1)
 	fmt.Println(peer0org1[0])
-	fmt.Println("New change testing 2 ....")
+	fmt.Println("New change testing 1 ....")
 	fmt.Println("\n--------------------------------------------------------------------")
 	fmt.Println("--------------------------------------------------------------------\n")
 	fmt.Println("net.LookupHost peer1.org1.example.com")

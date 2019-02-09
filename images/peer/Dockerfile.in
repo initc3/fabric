@@ -10,7 +10,7 @@ ADD  payload/sampleconfig.tar.bz2 $FABRIC_CFG_PATH
 
 ##############################################################################
 # temporary
-RUN apt-get update && apt-get install -y netcat     
+RUN apt-get update && apt-get install -y netcat curl     
 
 # BEGIN: Python HoneyBadgerMPC dependencies                                  #
 ENV PYTHONUNBUFFERED=1
@@ -19,16 +19,45 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-201
 
 ENV PATH /root/.cargo/bin:$PATH
 
+# Install Python 3.7
 
-RUN apt-get update && apt-get install -y git locales python3-pip libffi-dev libgmp-dev libmpc-dev libmpfr-dev libntl-dev libflint-dev
+RUN apt-get update && apt-get install -y git locales zlib1g-dev python3-pip libffi-dev libgmp-dev libmpc-dev libmpfr-dev libntl-dev libflint-dev build-essential checkinstall zlib1g zlib1g-dev openssl libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev
+
+
+# RUN gpg --recv-key AA65421D
+
+RUN wget https://www.python.org/ftp/python/3.7.2/Python-3.7.2.tgz
+
+RUN wget https://www.python.org/ftp/python/3.7.2/Python-3.7.2.tgz.asc
+
+# RUN gpg --verify Python-3.7.2.tgz.asc
+RUN cp Python-3.7.2.tgz /usr/src/
+RUN cd /usr/src && tar -zxvf Python-3.7.2.tgz
+
+RUN cd /usr/src/Python-3.7.2
+RUN cd /usr/src/Python-3.7.2 && ./configure
+RUN cd /usr/src/Python-3.7.2 && make altinstall
+
+# Download and install honeybadgerMPC
+
+
+RUN pip3.7 install --upgrade pip
+
+RUN pip3.7 install pyyaml
+
+RUN cp /usr/local/bin/python3.7 /usr/bin/python
+
+RUN cd /usr/src 
+
+RUN cd /usr/src/ && git clone https://github.com/hybridNeo/HoneyBadgerMPC.git
+
+RUN cd /usr/src/HoneyBadgerMPC && git checkout dev
+
+
 
 WORKDIR /usr/src/HoneyBadgerMPC
 
-RUN pip3 install --upgrade pip
-
-COPY . /usr/src/HoneyBadgerMPC
-
-RUN pip3 install pairing
+RUN cd /usr/src/HoneyBadgerMPC && pip3.7 install pairing/
 
 RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
     locale-gen
